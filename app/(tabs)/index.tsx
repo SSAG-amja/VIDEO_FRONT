@@ -1,12 +1,19 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { 
-  View, Text, StyleSheet, Dimensions, Pressable, 
-  FlatList, Animated, Image, ActivityIndicator 
-} from 'react-native';
-import { router } from 'expo-router';
-import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { router } from 'expo-router';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  ActivityIndicator,
+  Animated,
+  Dimensions,
+  FlatList,
+  Image,
+  Pressable,
+  StyleSheet,
+  Text,
+  View
+} from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
@@ -225,7 +232,7 @@ export default function HomeFeedScreen() {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
-      const response = await fetch(`http://192.168.0.14:8000/api/movies/shorts?page=${pageNumber}`); 
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/movies/shorts?page=${pageNumber}`); 
       const data = await response.json();
       
       // 1페이지면 덮어쓰고, 다음 페이지면 덧붙임
