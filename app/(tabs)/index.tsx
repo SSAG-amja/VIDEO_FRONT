@@ -15,6 +15,7 @@ import {
   View
 } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
+import { API_BASE_URL } from '../../constants/api';
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16); 
@@ -232,7 +233,7 @@ export default function HomeFeedScreen() {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/movies/shorts?page=${pageNumber}`); 
+      const response = await fetch(`${API_BASE_URL}/api/movies/shorts?page=${pageNumber}`); 
       const data = await response.json();
       
       // 1페이지면 덮어쓰고, 다음 페이지면 덧붙임
