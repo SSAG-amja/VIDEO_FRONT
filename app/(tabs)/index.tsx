@@ -26,8 +26,8 @@ interface Movie {
   posterPath: string;
   youtubeId: string;
   info: string;
-  rating: number;   // 실제 별점
-  runtime: number;  // 실제 상영시간
+  rating: number; 
+  runtime: number; 
   tags: string[];
   cast: { id: number; name: string; role: string; image: string; }[];
 }
@@ -190,7 +190,6 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
           </View>
 
           <Pressable 
-            // as any를 붙여서 라우팅 타입 에러를 우회합니다
             onPress={() => router.push({ pathname: '/detail/[id]', params: { id: movie.id, movieData: JSON.stringify(movie) } } as any)} 
             style={styles.detailPrompt}
           >
@@ -215,27 +214,27 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
 export default function HomeFeedScreen() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
-  
-  // 무한 스크롤 State
   const [page, setPage] = useState<number>(1);
   const [isFetchingMore, setIsFetchingMore] = useState<boolean>(false);
-  
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [isGlobalMuted, setIsGlobalMuted] = useState<boolean>(true);
 
-  // 페이지 단위로 데이터를 불러오는 함수
   const fetchMovies = async (pageNumber: number) => {
-    if (isFetchingMore) return;
+    if (isFetchingMore && pageNumber !== 1) return;
     
     try {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
-      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/movies/shorts?page=${pageNumber}`); 
+      /**
+       * [수정 포인트]
+       * 1. 기존 경로 '/api/movies/shorts'에서 
+       * 2. 백엔드 설계에 맞춘 '/api/v1/movie_load/shorts'로 엔드포인트 수정
+       */
+      const response = await fetch(`${process.env.EXPO_PUBLIC_API_URL}/api/v1/movie_load/shorts?page=${pageNumber}`); 
       const data = await response.json();
       
-      // 1페이지면 덮어쓰고, 다음 페이지면 덧붙임
       if (data.movies && data.movies.length > 0) {
         setMovies(prevMovies => pageNumber === 1 ? data.movies : [...prevMovies, ...data.movies]);
       }
@@ -251,7 +250,6 @@ export default function HomeFeedScreen() {
     fetchMovies(1);
   }, []);
 
-  // 리스트 끝에 닿았을 때 실행 (다음 페이지 호출)
   const loadMoreMovies = () => {
     if (!isFetchingMore && !isLoading) {
       const nextPage = page + 1;
@@ -290,21 +288,18 @@ export default function HomeFeedScreen() {
             />
           )}
           keyExtractor={(item, index) => `${item.id}-${index}`}
-          pagingEnabled showsVerticalScrollIndicator={false}
+          pagingEnabled 
+          showsVerticalScrollIndicator={false}
           onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={viewabilityConfig} windowSize={3} 
+          viewabilityConfig={viewabilityConfig} 
+          windowSize={3} 
           getItemLayout={(data, index) => ({ length: layoutHeight, offset: layoutHeight * index, index })}
-          
-          // 무한 스크롤 트리거 속성
           onEndReached={loadMoreMovies}
           onEndReachedThreshold={0.5} 
-          
-          // 무한 스크롤 로딩 인디케이터
           ListFooterComponent={
             isFetchingMore ? (
-              <View style={[styles.itemContainer, { height: layoutHeight, backgroundColor: '#0a0a0a' }]}>
-                <ActivityIndicator size="large" color="#FF5A36" />
-                <Text style={styles.loadingText}>다음 영상을 불러오는 중...</Text>
+              <View style={[styles.itemContainer, { height: 100, backgroundColor: '#0a0a0a' }]}>
+                <ActivityIndicator size="small" color="#FF5A36" />
               </View>
             ) : null
           }
