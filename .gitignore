@@ -189,3 +189,8 @@ dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 ee078794f2c43ddd1eaced4b546bd05150156462
+
+# 환경 변수 파일 제외
+.env
+.env.local
+.env.*.local
