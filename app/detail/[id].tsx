@@ -1,18 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ImageBackground, ScrollView, 
-  Pressable, Image, Animated, Dimensions, BackHandler 
+  Pressable, Image, Animated, Dimensions, BackHandler,
+  Modal, Alert, TextInput
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { usePlaylistStore } from '../../store/usePlaylistStore';
+import OttModal from '../../components/ottmodal'; // 👈 분리한 컴포넌트 임포트
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function DetailScreen() {
   const { movieData } = useLocalSearchParams();
   
-  let movieDetail = null;
+  let movieDetail: any = null;
   try {
     if (typeof movieData === 'string') movieDetail = JSON.parse(movieData);
     else if (Array.isArray(movieData)) movieDetail = JSON.parse(movieData[0]);
@@ -21,11 +24,19 @@ export default function DetailScreen() {
   }
 
   const [isExpanded, setIsExpanded] = useState(false);
-  
-  // 상하 이동 애니메이션 값
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // 💡 화면을 밑으로 내리며 닫는 애니메이션 함수
+  // 모달 상태 관리
+  const [isOttModalVisible, setOttModalVisible] = useState(false);
+  const [isPlaylistModalVisible, setPlaylistModalVisible] = useState(false);
+  
+  // 재생목록 추가 관련 상태
+  const [isCreatingNew, setIsCreatingNew] = useState(false);
+  const [newPlaylistName, setNewPlaylistName] = useState('');
+  
+  const { playlists, addPlaylist } = usePlaylistStore();
+  const customPlaylists = playlists.filter(p => p !== 'Pinned' && p !== 'Watched');
+
   const closeModal = () => {
     Animated.timing(translateY, {
       toValue: SCREEN_HEIGHT,
@@ -36,7 +47,6 @@ export default function DetailScreen() {
     });
   };
 
-  // 물리 뒤로가기 버튼(제스처) 제어
   useEffect(() => {
     const onBackPress = () => {
       closeModal();
@@ -45,6 +55,21 @@ export default function DetailScreen() {
     const backHandler = BackHandler.addEventListener('hardwareBackPress', onBackPress);
     return () => backHandler.remove();
   }, []);
+
+  const handleAddToPlaylist = (playlistName: string) => {
+    Alert.alert('추가 완료', `'${playlistName}'에 영화가 추가되었습니다.`);
+    setPlaylistModalVisible(false);
+  };
+
+  const handleCreateAndAddPlaylist = () => {
+    const trimmedName = newPlaylistName.trim();
+    if (trimmedName.length === 0) return;
+
+    addPlaylist(trimmedName);
+    setNewPlaylistName('');
+    setIsCreatingNew(false);
+    handleAddToPlaylist(trimmedName);
+  };
 
   if (!movieDetail) {
     return (
@@ -60,16 +85,10 @@ export default function DetailScreen() {
   return (
     <View style={styles.transparentWrapper}>
       <Animated.View style={[styles.container, { transform: [{ translateY }] }]}>
-        <ScrollView 
-          showsVerticalScrollIndicator={false} 
-          contentContainerStyle={styles.scrollContent}
-          bounces={false} 
-        >
-          {/* 💡 핵심: 포스터 영역 전체를 Pressable로 감싸서, 터치 시 closeModal 실행 */}
+        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent} bounces={false}>
           <Pressable onPress={closeModal}>
             <ImageBackground source={{ uri: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}` }} style={styles.posterImage}>
               <LinearGradient colors={['rgba(0,0,0,0.5)', 'transparent', '#111']} locations={[0, 0.3, 1]} style={styles.posterGradient}>
-                {/* 좌상단 화살표 버튼은 직관성을 위해 디자인으로 남겨둠 */}
                 <View style={styles.backButton}>
                   <Ionicons name="chevron-down" size={36} color="#fff" />
                 </View>
@@ -79,10 +98,7 @@ export default function DetailScreen() {
 
           {/* 컨텐츠 영역 */}
           <View style={styles.contentBody}>
-            <View style={styles.handleBarAlign}>
-              <View style={styles.handleBar} />
-            </View>
-
+            <View style={styles.handleBarAlign}><View style={styles.handleBar} /></View>
             <Text style={styles.title}>{movieDetail.title}</Text>
             <Text style={styles.infoText}>{movieDetail.info}</Text>
 
@@ -96,9 +112,7 @@ export default function DetailScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>시놉시스</Text>
-              <Text style={styles.synopsisText} numberOfLines={isExpanded ? undefined : 4}>
-                {movieDetail.overview}
-              </Text>
+              <Text style={styles.synopsisText} numberOfLines={isExpanded ? undefined : 4}>{movieDetail.overview}</Text>
               {movieDetail.overview && movieDetail.overview.length > 0 && (
                 <Pressable onPress={() => setIsExpanded(!isExpanded)}>
                   <Text style={styles.readMoreText}>{isExpanded ? '접기' : '더보기'}</Text>
@@ -119,15 +133,78 @@ export default function DetailScreen() {
               </ScrollView>
             </View>
           </View>
-          <View style={{ height: 100 }} />
+          <View style={{ height: 120 }} />
         </ScrollView>
 
         <View style={styles.footer}>
-          <Pressable style={styles.pinButton}>
+          {/* 재생목록 추가 버튼 */}
+          <Pressable style={styles.playlistIconBtn} onPress={() => setPlaylistModalVisible(true)}>
+            <Ionicons name="folder-open-outline" size={26} color="#fff" />
+          </Pressable>
+          
+          {/* Pin 하기 버튼 */}
+          <Pressable style={styles.pinButton} onPress={() => setOttModalVisible(true)}>
             <Ionicons name="heart" size={24} color="#fff" style={{ marginRight: 8 }} />
             <Text style={styles.pinButtonText}>이 영화 Pin 하기</Text>
           </Pressable>
         </View>
+
+        {/* 💡 컴포넌트화 된 OTT 모달 적용 */}
+        <OttModal 
+          visible={isOttModalVisible} 
+          onClose={() => setOttModalVisible(false)} 
+        />
+
+        {/* 재생목록 모달은 그대로 유지 */}
+        <Modal visible={isPlaylistModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPlaylistModalVisible(false)}>
+          <Pressable style={styles.modalOverlay} onPress={() => { setPlaylistModalVisible(false); setIsCreatingNew(false); }}>
+            <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
+              <View style={styles.sheetHandle} />
+              <Text style={styles.sheetTitle}>재생목록에 저장</Text>
+              
+              {!isCreatingNew ? (
+                <>
+                  <Text style={styles.sheetSubtitle}>어떤 폴더에 저장할까요?</Text>
+                  <ScrollView style={styles.playlistScroll} showsVerticalScrollIndicator={false}>
+                    <Pressable style={styles.addPlaylistBtn} onPress={() => setIsCreatingNew(true)}>
+                      <View style={styles.addPlaylistIconBg}>
+                        <Feather name="plus" size={20} color="#FF5A36" />
+                      </View>
+                      <Text style={styles.addPlaylistText}>새 재생목록 추가</Text>
+                    </Pressable>
+
+                    {customPlaylists.map((playlist, index) => (
+                      <Pressable key={index} style={styles.playlistItem} onPress={() => handleAddToPlaylist(playlist)}>
+                        <Ionicons name="folder" size={24} color="#666" style={{ marginRight: 15 }} />
+                        <Text style={styles.playlistItemText}>{playlist}</Text>
+                      </Pressable>
+                    ))}
+                  </ScrollView>
+                </>
+              ) : (
+                <View style={styles.createFormContainer}>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="재생목록 이름을 입력하세요"
+                    placeholderTextColor="#666"
+                    value={newPlaylistName}
+                    onChangeText={setNewPlaylistName}
+                    autoFocus={true}
+                  />
+                  <View style={styles.modalButtonContainer}>
+                    <Pressable style={[styles.actionBtn, styles.cancelBtn]} onPress={() => setIsCreatingNew(false)}>
+                      <Text style={styles.cancelBtnText}>취소</Text>
+                    </Pressable>
+                    <Pressable style={[styles.actionBtn, styles.confirmBtn]} onPress={handleCreateAndAddPlaylist}>
+                      <Text style={styles.confirmBtnText}>추가</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              )}
+            </Pressable>
+          </Pressable>
+        </Modal>
+
       </Animated.View>
     </View>
   );
@@ -158,7 +235,31 @@ const styles = StyleSheet.create({
   castImage: { width: 70, height: 70, borderRadius: 35, backgroundColor: '#333', marginBottom: 8 },
   castName: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },
   castRole: { color: '#888', fontSize: 11, textAlign: 'center' },
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, backgroundColor: 'transparent' },
-  pinButton: { backgroundColor: '#FF5A36', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', paddingVertical: 18, borderRadius: 30, shadowColor: '#FF5A36', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
+  
+  // 하단 버튼 영역 스타일
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: 'transparent', flexDirection: 'row', gap: 15 },
+  playlistIconBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', justifyContent: 'center', alignItems: 'center' },
+  pinButton: { flex: 1, backgroundColor: '#FF5A36', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 30, shadowColor: '#FF5A36', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
   pinButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+
+  // 재생목록 모달 공통/전용 스타일 유지
+  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
+  bottomSheet: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
+  sheetHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
+  sheetTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold', marginBottom: 8, textAlign: 'center' },
+  sheetSubtitle: { color: '#aaa', fontSize: 14, marginBottom: 24, textAlign: 'center' },
+  playlistScroll: { maxHeight: 300, marginBottom: 10 },
+  addPlaylistBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 12, marginBottom: 10 },
+  addPlaylistIconBg: { width: 40, height: 40, borderRadius: 8, backgroundColor: 'rgba(255, 90, 54, 0.1)', justifyContent: 'center', alignItems: 'center', marginRight: 15 },
+  addPlaylistText: { color: '#FF5A36', fontSize: 16, fontWeight: 'bold' },
+  playlistItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#222' },
+  playlistItemText: { color: '#fff', fontSize: 16 },
+  createFormContainer: { marginTop: 10 },
+  textInput: { backgroundColor: '#0a0a0a', color: '#fff', borderRadius: 8, padding: 15, fontSize: 16, borderWidth: 1, borderColor: '#333', marginBottom: 20 },
+  modalButtonContainer: { flexDirection: 'row', gap: 10 },
+  actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
+  cancelBtn: { backgroundColor: '#333' },
+  confirmBtn: { backgroundColor: '#FF5A36' },
+  cancelBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
+  confirmBtnText: { color: '#111', fontSize: 16, fontWeight: 'bold' },
 });

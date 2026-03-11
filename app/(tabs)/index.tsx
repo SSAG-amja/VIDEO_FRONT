@@ -16,6 +16,7 @@ import {
 } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { API_BASE_URL } from '../../constants/api';
+import OttModal from '../../components/ottmodal'; // 👈 분리한 컴포넌트 임포트
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16); 
@@ -39,12 +40,16 @@ interface ShortsItemProps {
   layoutHeight: number;
   isGlobalMuted: boolean;
   setIsGlobalMuted: (muted: boolean) => void;
+  onPass: () => void;
 }
 
-const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalMuted }: ShortsItemProps) => {
+const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalMuted, onPass }: ShortsItemProps) => {
   const blurAnim = useRef(new Animated.Value(0)).current;
   const webviewRef = useRef<WebView>(null);
   const [isReady, setIsReady] = useState(false);
+  
+  const [isOttModalVisible, setOttModalVisible] = useState(false);
+  const [isPinned, setIsPinned] = useState(false);
 
   useEffect(() => {
     if (!isReady) return;
@@ -120,16 +125,9 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
               videoId: '${movie.youtubeId}',
               host: 'https://www.youtube-nocookie.com',
               playerVars: {
-                'playsinline': 1,
-                'autoplay': 0, 
-                'mute': 1,
-                'controls': 0,
-                'loop': 1,
-                'playlist': '${movie.youtubeId}'
+                'playsinline': 1, 'autoplay': 0, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': '${movie.youtubeId}'
               },
-              events: {
-                'onReady': function(event) { sendToRN('onReady', 'Ready'); }
-              }
+              events: { 'onReady': function(event) { sendToRN('onReady', 'Ready'); } }
             });
           }
         </script>
@@ -139,27 +137,17 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
 
   return (
     <View style={[styles.itemContainer, { height: layoutHeight }]}>
-      <Image 
-        source={{ uri: `https://image.tmdb.org/t/p/w780${movie.posterPath}` }} 
-        style={StyleSheet.absoluteFillObject}
-        resizeMode="cover"
-      />
-
+      <Image source={{ uri: `https://image.tmdb.org/t/p/w780${movie.posterPath}` }} style={StyleSheet.absoluteFillObject} resizeMode="cover" />
       <Animated.View style={[StyleSheet.absoluteFillObject, { opacity: blurAnim }]} pointerEvents="none">
         <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFillObject} />
       </Animated.View>
 
       <View style={styles.videoWrapper}>
         <WebView
-          ref={webviewRef}
-          source={{ html: htmlContent, baseUrl: 'https://localhost' }}
+          ref={webviewRef} source={{ html: htmlContent, baseUrl: 'https://localhost' }}
           style={{ width: WINDOW_WIDTH, height: VIDEO_HEIGHT, backgroundColor: 'transparent' }} 
-          allowsInlineMediaPlayback={true}
-          mediaPlaybackRequiresUserAction={false}
-          javaScriptEnabled={true}
-          domStorageEnabled={true}
-          onMessage={onMessage}
-          scrollEnabled={false}
+          allowsInlineMediaPlayback={true} mediaPlaybackRequiresUserAction={false}
+          javaScriptEnabled={true} domStorageEnabled={true} onMessage={onMessage} scrollEnabled={false}
         />
       </View>
 
@@ -175,13 +163,12 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
         <LinearGradient colors={['transparent', 'rgba(10, 10, 10, 0.8)', '#0a0a0a']} locations={[0, 0.5, 1]} style={styles.bottomGradient} pointerEvents="box-none">
           <Text style={styles.title} numberOfLines={2}>{movie.title}</Text>
           <Text style={styles.subtitle}>{movie.overview.slice(0, 30)}...</Text>
-
+          
           <View style={styles.infoRow}>
             <FontAwesome name="star" size={14} color="#FFD700" />
             <Text style={styles.infoTextBold}>{movie.rating}</Text>
             <Ionicons name="time-outline" size={14} color="#aaa" style={{ marginLeft: 10 }} />
             <Text style={styles.infoText}>{movie.runtime}분</Text>
-            
             <Pressable onPress={() => setIsGlobalMuted(!isGlobalMuted)} style={styles.muteToggleContainer}>
               <Ionicons name={isGlobalMuted ? "volume-mute" : "volume-high"} size={18} color={isGlobalMuted ? "#aaa" : "#FF5A36"} />
               <Text style={[styles.infoText, !isGlobalMuted && { color: '#FF5A36', fontWeight: 'bold' }]}>
@@ -190,24 +177,48 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
             </Pressable>
           </View>
 
-          <Pressable 
-            onPress={() => router.push({ pathname: '/detail/[id]', params: { id: movie.id, movieData: JSON.stringify(movie) } } as any)} 
-            style={styles.detailPrompt}
-          >
+          <Pressable onPress={() => router.push({ pathname: '/detail/[id]', params: { id: movie.id, movieData: JSON.stringify(movie) } } as any)} style={styles.detailPrompt}>
             <Ionicons name="chevron-up" size={20} color="#666" />
             <Text style={styles.detailPromptText}>탭하여 상세 보기</Text>
           </Pressable>
 
           <View style={styles.actionRow}>
-            <Pressable style={styles.actionButton} onPress={() => console.log('Pass:', movie.title)}>
+            <Pressable 
+              onPress={onPass}
+              style={({ pressed }) => [
+                styles.actionButton,
+                pressed && { transform: [{ scale: 0.85 }], backgroundColor: 'rgba(255, 90, 54, 0.2)' }
+              ]}
+            >
               <Ionicons name="close" size={32} color="#FF5A36" />
             </Pressable>
-            <Pressable style={[styles.actionButton, styles.pinButton]} onPress={() => console.log('Pin:', movie.title)}>
-              <Ionicons name="heart-outline" size={32} color="#FF5A36" />
+            
+            <Pressable 
+              onPress={() => {
+                const nextPinnedState = !isPinned;
+                setIsPinned(nextPinnedState);
+                if (nextPinnedState) {
+                  setOttModalVisible(true);
+                }
+              }}
+              style={({ pressed }) => [
+                styles.actionButton, 
+                styles.pinButton,
+                isPinned && { backgroundColor: 'rgba(255, 90, 54, 0.1)' },
+                pressed && { transform: [{ scale: 0.85 }], backgroundColor: 'rgba(255, 90, 54, 0.2)' }
+              ]}
+            >
+              <Ionicons name={isPinned ? "heart" : "heart-outline"} size={32} color="#FF5A36" />
             </Pressable>
           </View>
         </LinearGradient>
       </View>
+
+      {/* 💡 컴포넌트화 된 OTT 모달 적용 */}
+      <OttModal 
+        visible={isOttModalVisible} 
+        onClose={() => setOttModalVisible(false)} 
+      />
     </View>
   );
 };
@@ -221,21 +232,15 @@ export default function HomeFeedScreen() {
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [isGlobalMuted, setIsGlobalMuted] = useState<boolean>(true);
 
+  const flatListRef = useRef<FlatList>(null); 
+
   const fetchMovies = async (pageNumber: number) => {
     if (isFetchingMore && pageNumber !== 1) return;
-    
     try {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
-
-      /**
-       * [수정 포인트]
-       * 1. 기존 경로 '/api/movies/shorts'에서 
-       * 2. 백엔드 설계에 맞춘 '/api/v1/movie_load/shorts'로 엔드포인트 수정
-       */
       const response = await fetch(`${API_BASE_URL}/api/v1/movie_load/shorts?page=${pageNumber}`); 
       const data = await response.json();
-      
       if (data.movies && data.movies.length > 0) {
         setMovies(prevMovies => pageNumber === 1 ? data.movies : [...prevMovies, ...data.movies]);
       }
@@ -265,6 +270,13 @@ export default function HomeFeedScreen() {
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 60 }).current;
 
+  const handlePass = () => {
+    const nextIndex = activeIndex + 1;
+    if (nextIndex < movies.length) {
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
+    }
+  };
+
   if (isLoading) {
     return (
       <View style={styles.loadingContainer}>
@@ -278,6 +290,7 @@ export default function HomeFeedScreen() {
     <View style={styles.container} onLayout={(event) => setLayoutHeight(event.nativeEvent.layout.height)}>
       {layoutHeight > 0 && (
         <FlatList
+          ref={flatListRef}
           data={movies}
           renderItem={({ item, index }) => (
             <ShortsItem 
@@ -286,6 +299,7 @@ export default function HomeFeedScreen() {
               layoutHeight={layoutHeight} 
               isGlobalMuted={isGlobalMuted} 
               setIsGlobalMuted={setIsGlobalMuted} 
+              onPass={handlePass} 
             />
           )}
           keyExtractor={(item, index) => `${item.id}-${index}`}
@@ -335,4 +349,5 @@ const styles = StyleSheet.create({
   actionRow: { flexDirection: 'row', justifyContent: 'center', alignItems: 'center', gap: 40 },
   actionButton: { width: 64, height: 64, borderRadius: 32, borderWidth: 1, borderColor: '#333', backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center' },
   pinButton: { borderColor: '#FF5A36' },
+  // 💡 모달 관련 스타일 전부 삭제됨 (OttModal 내부에 선언됨)
 });
