@@ -5,12 +5,12 @@ import { FontAwesome } from '@expo/vector-icons';
 
 export default function SplashScreen() {
   useEffect(() => {
-    // 2초(2000ms) 뒤에 홈 화면으로 자동 이동
+    // 2초(2000ms) 뒤에 '온보딩 화면'으로 자동 이동
     const timer = setTimeout(() => {
-      router.replace('/(tabs)');
+      router.replace('/onboarding'); // <--- 이 부분을 수정했습니다.
     }, 2000);
 
-    // 컴포넌트가 사라질 때 타이머를 정리해 줍니다.
+    // 컴포넌트가 언마운트될 때 메모리 누수 방지를 위해 타이머 정리
     return () => clearTimeout(timer);
   }, []);
 
@@ -43,36 +43,36 @@ export default function SplashScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#0a0a0a', // 다크 테마 배경
-    justifyContent: 'space-between', // 상단 콘텐츠와 하단 푸터를 양 끝으로 배치
+    backgroundColor: '#0a0a0a',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: 60, // 상하 여백 추가
+    paddingVertical: 60,
   },
   content: {
     alignItems: 'center',
     justifyContent: 'center',
-    flex: 1, // 남은 공간을 모두 차지하여 중앙 정렬
+    flex: 1,
   },
   iconContainer: {
     width: 80,
     height: 80,
-    backgroundColor: '#221a1a', // 아이콘 배경색 (살짝 붉은기 도는 어두운 색)
-    borderRadius: 20, // 둥근 모서리
+    backgroundColor: '#221a1a',
+    borderRadius: 20,
     justifyContent: 'center',
     alignItems: 'center',
     marginBottom: 20,
     borderWidth: 1,
-    borderColor: '#332a2a', // 테두리 포인트
+    borderColor: '#332a2a',
   },
   logoText: {
     fontSize: 48,
     fontWeight: 'bold',
     color: '#ffffff',
     marginBottom: 10,
-    letterSpacing: 1, // 글자 간격 조절
+    letterSpacing: 1,
   },
   logoHighlight: {
-    color: '#FF5A36', // 주황색 포인트 컬러
+    color: '#FF5A36',
   },
   slogan: {
     fontSize: 18,
