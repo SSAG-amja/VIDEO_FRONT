@@ -228,16 +228,12 @@ export default function HomeFeedScreen() {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
-<<<<<<< HEAD
       /**
        * [수정 포인트]
        * 1. 기존 경로 '/api/movies/shorts'에서 
        * 2. 백엔드 설계에 맞춘 '/api/v1/movie_load/shorts'로 엔드포인트 수정
        */
       const response = await fetch(`${API_BASE_URL}/api/v1/movie_load/shorts?page=${pageNumber}`); 
-=======
-      const response = await fetch(`${API_BASE_URL}/api/movies/shorts?page=${pageNumber}`); 
->>>>>>> 4042c2011455794a497dedaea9192a394541f47d
       const data = await response.json();
       
       if (data.movies && data.movies.length > 0) {
