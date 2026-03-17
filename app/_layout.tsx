@@ -4,6 +4,10 @@ export default function RootLayout() {
   return (
     <Stack screenOptions={{ headerShown: false }}>
       <Stack.Screen name="index" />
+      {/* 1. 인증 관련 화면 (회원가입/로그인) */}
+      <Stack.Screen name="(auth)/login" />
+      <Stack.Screen name="(auth)/signin" />
+
       <Stack.Screen name="onboarding" />
       <Stack.Screen name="(tabs)" />
       

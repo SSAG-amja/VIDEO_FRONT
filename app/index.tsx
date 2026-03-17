@@ -5,14 +5,14 @@ import { FontAwesome } from '@expo/vector-icons';
 
 export default function SplashScreen() {
   useEffect(() => {
-    // 2초(2000ms) 뒤에 '온보딩 화면'으로 자동 이동
+    // 💡 2초 뒤에 '온보딩'이 아니라 '로그인 화면'으로 이동하도록 수정
     const timer = setTimeout(() => {
-      router.replace('/onboarding'); // <--- 이 부분을 수정했습니다.
-    }, 2000);
+      // (auth) 그룹 폴더 안에 있으므로 /login으로 보내면 됩니다.
+      router.replace('/login'); 
+  }, 2000);
 
-    // 컴포넌트가 언마운트될 때 메모리 누수 방지를 위해 타이머 정리
-    return () => clearTimeout(timer);
-  }, []);
+  return () => clearTimeout(timer);
+}, []);
 
   return (
     <View style={styles.container}>
