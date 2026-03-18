@@ -1,10 +1,10 @@
+import { API_BASE_URL } from '@/constants/api';
 import axios from 'axios';
 
-// 💡 .env에서 가져온 값에 무조건 http://를 붙여버리는 쿨한 방식
-const baseURL = `http://${process.env.EXPO_PUBLIC_API_URL}`;
-
+// 260318 박현식
+// url 수정했어염
 const client = axios.create({
-  baseURL: baseURL,
+  baseURL: API_BASE_URL,
   timeout: 5000,
   headers: {
     'Content-Type': 'application/json',
