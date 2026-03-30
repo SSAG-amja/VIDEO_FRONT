@@ -8,20 +8,45 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
-import OttModal from '../../components/ottmodal'; // 👈 분리한 컴포넌트 임포트
+import OttModal from '../../components/ottmodal';
+
+// 👇 API 임포트 (만약 여기서 경로 에러가 나면 import { fetchMovieDetailData } from '@/api/movies'; 로 바꿔주세요!)
+import { fetchMovieDetailData } from '../../api/movies'; 
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 export default function DetailScreen() {
   const { movieData } = useLocalSearchParams();
   
-  let movieDetail: any = null;
-  try {
-    if (typeof movieData === 'string') movieDetail = JSON.parse(movieData);
-    else if (Array.isArray(movieData)) movieDetail = JSON.parse(movieData[0]);
-  } catch (error) {
-    console.log("데이터 파싱 에러:", error);
-  }
+  // 1. 초기 데이터 파싱 및 useState로 상태 관리 (화면 즉시 렌더링 용도)
+  const [movieDetail, setMovieDetail] = useState<any>(() => {
+    try {
+      if (typeof movieData === 'string') return JSON.parse(movieData);
+      else if (Array.isArray(movieData)) return JSON.parse(movieData[0]);
+    } catch (error) {
+      console.log("데이터 파싱 에러:", error);
+      return null;
+    }
+    return null;
+  });
+
+  // 2. 데이터 자동 보강 (Lazy Loading) 로직
+  // 탐색창 등에서 넘어와서 데이터가 텅 비어있을 때 백엔드에 상세 정보를 요청해서 채워 넣습니다.
+  useEffect(() => {
+    const checkAndFetchMissingData = async () => {
+      if (
+        movieDetail && 
+        (!movieDetail.cast || movieDetail.cast.length === 0 || movieDetail.overview === "상세 정보를 불러오는 중입니다...")
+      ) {
+        const fullData = await fetchMovieDetailData(movieDetail.id);
+        if (fullData) {
+          setMovieDetail(fullData); // 꽉 찬 데이터로 리렌더링
+        }
+      }
+    };
+
+    checkAndFetchMissingData();
+  }, [movieDetail?.id]);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
