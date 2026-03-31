@@ -17,7 +17,7 @@ import {
 } from 'react-native';
 import { WebView, WebViewMessageEvent } from 'react-native-webview';
 import { API_BASE_URL } from '../../constants/api';
-// 💡 OTT 모달 임포트 제거됨
+import { usePinStore } from '../../store/usePinStore'; // 💡 전역 스토어 임포트
 
 const { width: WINDOW_WIDTH } = Dimensions.get('window');
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16); 
@@ -51,14 +51,16 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
   const webviewRef = useRef<WebView>(null);
   const [isReady, setIsReady] = useState(false);
   
-  // 💡 OTT 모달 상태 제거됨
-  const [isPinned, setIsPinned] = useState(false);
+  // 💡 로컬 useState 제거 및 전역 상태 연결
+  const pinnedMovies = usePinStore((state) => state.pinnedMovies);
+  const togglePin = usePinStore((state) => state.togglePin);
+  const isPinned = pinnedMovies.includes(movie.id);
 
   const pan = useRef(new Animated.ValueXY()).current;
 
-  // 💡 모달 띄우는 로직 제거, 순수하게 찜 상태만 토글
+  // 💡 id를 전달하여 전역 상태 토글
   const handlePinAction = () => {
-    setIsPinned((prev) => !prev);
+    togglePin(movie.id);
   };
 
   const panResponder = useRef(
@@ -322,7 +324,6 @@ const ShortsItem = ({ movie, isActive, layoutHeight, isGlobalMuted, setIsGlobalM
           <Ionicons name="close" size={70} color="#FF5A36" />
         </Animated.View>
       </View>
-      {/* 💡 렌더링되던 OttModal 컴포넌트 제거됨 */}
     </View>
   );
 };

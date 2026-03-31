@@ -2,23 +2,27 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ImageBackground, ScrollView, 
   Pressable, Image, Animated, Dimensions, BackHandler,
-  Modal, Alert, TextInput
+  Modal, Alert, TextInput, Linking 
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
-import OttModal from '../../components/ottmodal';
-
-// 👇 API 임포트 (만약 여기서 경로 에러가 나면 import { fetchMovieDetailData } from '@/api/movies'; 로 바꿔주세요!)
+import { usePinStore } from '../../store/usePinStore'; // 💡 전역 스토어 임포트
 import { fetchMovieDetailData } from '../../api/movies'; 
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
+const DUMMY_OTTS = [
+  { id: 'netflix', name: '넷플릭스', color: '#E50914', scheme: 'nflx://' },
+  { id: 'watcha', name: '왓챠', color: '#FF0558', scheme: 'watcha://' },
+  { id: 'tving', name: '티빙', color: '#FF153C', scheme: 'tving://' },
+  { id: 'disney', name: '디즈니+', color: '#113CCF', scheme: 'disneyplus://' },
+];
+
 export default function DetailScreen() {
   const { movieData } = useLocalSearchParams();
   
-  // 1. 초기 데이터 파싱 및 useState로 상태 관리 (화면 즉시 렌더링 용도)
   const [movieDetail, setMovieDetail] = useState<any>(() => {
     try {
       if (typeof movieData === 'string') return JSON.parse(movieData);
@@ -30,8 +34,6 @@ export default function DetailScreen() {
     return null;
   });
 
-  // 2. 데이터 자동 보강 (Lazy Loading) 로직
-  // 탐색창 등에서 넘어와서 데이터가 텅 비어있을 때 백엔드에 상세 정보를 요청해서 채워 넣습니다.
   useEffect(() => {
     const checkAndFetchMissingData = async () => {
       if (
@@ -40,7 +42,7 @@ export default function DetailScreen() {
       ) {
         const fullData = await fetchMovieDetailData(movieDetail.id);
         if (fullData) {
-          setMovieDetail(fullData); // 꽉 찬 데이터로 리렌더링
+          setMovieDetail(fullData); 
         }
       }
     };
@@ -51,11 +53,12 @@ export default function DetailScreen() {
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // 모달 상태 관리
-  const [isOttModalVisible, setOttModalVisible] = useState(false);
+  // 💡 로컬 useState 제거 및 전역 상태 연결
+  const pinnedMovies = usePinStore((state) => state.pinnedMovies);
+  const togglePin = usePinStore((state) => state.togglePin);
+  const isPinned = movieDetail ? pinnedMovies.includes(movieDetail.id) : false;
+
   const [isPlaylistModalVisible, setPlaylistModalVisible] = useState(false);
-  
-  // 재생목록 추가 관련 상태
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   
@@ -96,6 +99,19 @@ export default function DetailScreen() {
     handleAddToPlaylist(trimmedName);
   };
 
+  const handleOpenOtt = async (ott: typeof DUMMY_OTTS[0]) => {
+    try {
+      const supported = await Linking.canOpenURL(ott.scheme);
+      if (supported) {
+        await Linking.openURL(ott.scheme);
+      } else {
+        Alert.alert(`${ott.name} 앱 실행`, `기기에 ${ott.name} 앱이 설치되어 있지 않습니다.`);
+      }
+    } catch (error) {
+      Alert.alert('실행 오류', '앱을 열 수 없습니다.');
+    }
+  };
+
   if (!movieDetail) {
     return (
       <View style={styles.loadingContainer}>
@@ -121,7 +137,6 @@ export default function DetailScreen() {
             </ImageBackground>
           </Pressable>
 
-          {/* 컨텐츠 영역 */}
           <View style={styles.contentBody}>
             <View style={styles.handleBarAlign}><View style={styles.handleBar} /></View>
             <Text style={styles.title}>{movieDetail.title}</Text>
@@ -157,30 +172,39 @@ export default function DetailScreen() {
                 ))}
               </ScrollView>
             </View>
+
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>바로 시청하기</Text>
+              <View style={styles.ottList}>
+                {DUMMY_OTTS.map((ott) => (
+                  <Pressable key={ott.id} style={[styles.ottItem, { borderColor: ott.color }]} onPress={() => handleOpenOtt(ott)}>
+                    <Text style={[styles.ottName, { color: ott.color }]}>{ott.name}</Text>
+                    <Ionicons name="play-circle" size={24} color={ott.color} />
+                  </Pressable>
+                ))}
+              </View>
+            </View>
           </View>
           <View style={{ height: 120 }} />
         </ScrollView>
 
         <View style={styles.footer}>
-          {/* 재생목록 추가 버튼 */}
           <Pressable style={styles.playlistIconBtn} onPress={() => setPlaylistModalVisible(true)}>
             <Ionicons name="folder-open-outline" size={26} color="#fff" />
           </Pressable>
           
-          {/* Pin 하기 버튼 */}
-          <Pressable style={styles.pinButton} onPress={() => setOttModalVisible(true)}>
-            <Ionicons name="heart" size={24} color="#fff" style={{ marginRight: 8 }} />
-            <Text style={styles.pinButtonText}>이 영화 Pin 하기</Text>
+          {/* 💡 전역 상태 토글 함수 연결 */}
+          <Pressable 
+            style={[styles.pinButton, isPinned && styles.pinButtonActive]} 
+            onPress={() => movieDetail && togglePin(movieDetail.id)}
+          >
+            <Ionicons name={isPinned ? "heart" : "heart-outline"} size={24} color={isPinned ? "#FF5A36" : "#fff"} style={{ marginRight: 8 }} />
+            <Text style={[styles.pinButtonText, isPinned && { color: '#FF5A36' }]}>
+              {isPinned ? "Pin 취소" : "이 영화 Pin 하기"}
+            </Text>
           </Pressable>
         </View>
 
-        {/* 💡 컴포넌트화 된 OTT 모달 적용 */}
-        <OttModal 
-          visible={isOttModalVisible} 
-          onClose={() => setOttModalVisible(false)} 
-        />
-
-        {/* 재생목록 모달은 그대로 유지 */}
         <Modal visible={isPlaylistModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPlaylistModalVisible(false)}>
           <Pressable style={styles.modalOverlay} onPress={() => { setPlaylistModalVisible(false); setIsCreatingNew(false); }}>
             <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
@@ -261,13 +285,16 @@ const styles = StyleSheet.create({
   castName: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },
   castRole: { color: '#888', fontSize: 11, textAlign: 'center' },
   
-  // 하단 버튼 영역 스타일
+  ottList: { gap: 12 },
+  ottItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 16, borderRadius: 12, borderWidth: 1 },
+  ottName: { fontSize: 16, fontWeight: 'bold' },
+
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: 'transparent', flexDirection: 'row', gap: 15 },
   playlistIconBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', justifyContent: 'center', alignItems: 'center' },
   pinButton: { flex: 1, backgroundColor: '#FF5A36', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 30, shadowColor: '#FF5A36', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
+  pinButtonActive: { backgroundColor: '#333', shadowColor: 'transparent', borderWidth: 1, borderColor: '#444' },
   pinButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
 
-  // 재생목록 모달 공통/전용 스타일 유지
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   bottomSheet: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 24, paddingBottom: 40 },
   sheetHandle: { width: 40, height: 4, backgroundColor: '#444', borderRadius: 2, alignSelf: 'center', marginBottom: 20 },
