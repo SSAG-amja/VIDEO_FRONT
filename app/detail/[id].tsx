@@ -8,7 +8,7 @@ import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
-import { usePinStore } from '../../store/usePinStore'; // 💡 전역 스토어 임포트
+import { usePinStore } from '../../store/usePinStore';
 import { fetchMovieDetailData } from '../../api/movies'; 
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -53,17 +53,17 @@ export default function DetailScreen() {
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // 💡 로컬 useState 제거 및 전역 상태 연결
+  // 💡 최신 Pin 스토어 로직 적용 (객체 형태 확인)
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
   const togglePin = usePinStore((state) => state.togglePin);
-  const isPinned = movieDetail ? pinnedMovies.includes(movieDetail.id) : false;
+  const isPinned = movieDetail ? pinnedMovies.some((m) => m.id === movieDetail.id) : false;
 
   const [isPlaylistModalVisible, setPlaylistModalVisible] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   
-  const { playlists, addPlaylist } = usePlaylistStore();
-  const customPlaylists = playlists.filter(p => p !== 'Pinned' && p !== 'Watched');
+  // 💡 최신 재생목록 스토어 로직 적용 (객체 형태 및 메서드 적용)
+  const { customPlaylists, createPlaylist, addMovieToPlaylist } = usePlaylistStore();
 
   const closeModal = () => {
     Animated.timing(translateY, {
@@ -84,19 +84,34 @@ export default function DetailScreen() {
     return () => backHandler.remove();
   }, []);
 
-  const handleAddToPlaylist = (playlistName: string) => {
-    Alert.alert('추가 완료', `'${playlistName}'에 영화가 추가되었습니다.`);
-    setPlaylistModalVisible(false);
+  const handleAddToPlaylist = (playlistId: string, playlistName: string) => {
+    if (movieDetail) {
+      addMovieToPlaylist(playlistId, {
+        id: movieDetail.id.toString(),
+        title: movieDetail.title,
+        image: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}`
+      });
+      Alert.alert('추가 완료', `'${playlistName}'에 영화가 추가되었습니다.`);
+      setPlaylistModalVisible(false);
+    }
   };
 
   const handleCreateAndAddPlaylist = () => {
     const trimmedName = newPlaylistName.trim();
     if (trimmedName.length === 0) return;
 
-    addPlaylist(trimmedName);
+    createPlaylist(trimmedName);
+    
+    // 방금 생성한 재생목록을 찾아 영화를 바로 추가
+    const updatedPlaylists = usePlaylistStore.getState().customPlaylists;
+    const newPlaylist = updatedPlaylists.find(p => p.name === trimmedName);
+    
+    if (newPlaylist) {
+      handleAddToPlaylist(newPlaylist.id, newPlaylist.name);
+    }
+    
     setNewPlaylistName('');
     setIsCreatingNew(false);
-    handleAddToPlaylist(trimmedName);
   };
 
   const handleOpenOtt = async (ott: typeof DUMMY_OTTS[0]) => {
@@ -193,10 +208,13 @@ export default function DetailScreen() {
             <Ionicons name="folder-open-outline" size={26} color="#fff" />
           </Pressable>
           
-          {/* 💡 전역 상태 토글 함수 연결 */}
           <Pressable 
             style={[styles.pinButton, isPinned && styles.pinButtonActive]} 
-            onPress={() => movieDetail && togglePin(movieDetail.id)}
+            onPress={() => movieDetail && togglePin({
+              id: movieDetail.id, 
+              title: movieDetail.title, 
+              image: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}`
+            })}
           >
             <Ionicons name={isPinned ? "heart" : "heart-outline"} size={24} color={isPinned ? "#FF5A36" : "#fff"} style={{ marginRight: 8 }} />
             <Text style={[styles.pinButtonText, isPinned && { color: '#FF5A36' }]}>
@@ -222,10 +240,10 @@ export default function DetailScreen() {
                       <Text style={styles.addPlaylistText}>새 재생목록 추가</Text>
                     </Pressable>
 
-                    {customPlaylists.map((playlist, index) => (
-                      <Pressable key={index} style={styles.playlistItem} onPress={() => handleAddToPlaylist(playlist)}>
+                    {customPlaylists.map((playlist) => (
+                      <Pressable key={playlist.id} style={styles.playlistItem} onPress={() => handleAddToPlaylist(playlist.id, playlist.name)}>
                         <Ionicons name="folder" size={24} color="#666" style={{ marginRight: 15 }} />
-                        <Text style={styles.playlistItemText}>{playlist}</Text>
+                        <Text style={styles.playlistItemText}>{playlist.name}</Text>
                       </Pressable>
                     ))}
                   </ScrollView>
