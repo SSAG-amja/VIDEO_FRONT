@@ -12,13 +12,13 @@ import { usePinStore } from '../../store/usePinStore';
 
 const MOCK_POSTS = [
   { 
-    id: '1', user: '김호영똥방구', time: '2시간 전', likes: 12, comments: 3,
+    id: '1', user: '김호영', time: '2시간 전', likes: 12, comments: 3,
     movie: { id: '157336', title: '인터스텔라', image: 'https://image.tmdb.org/t/p/w200/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg' }, 
     content: '우주 장면은 언제 봐도 경이롭네요. 한스 짐머 OST 들으면서 보니까 전율이 돋습니다.', 
     hashtags: ['#우주', '#인생영화', '#크리스토퍼놀란']
   },
   { 
-    id: '2', user: '김호영배꼽냄새푸르르', time: '5시간 전', likes: 34, comments: 8,
+    id: '2', user: '김호영바보', time: '5시간 전', likes: 34, comments: 8,
     movie: { id: '313369', title: '라라랜드', image: 'https://image.tmdb.org/t/p/w200/uDO8zWDhfWwoFdKS4fzkUJt0Vy0.jpg' }, 
     content: '마지막 눈빛 교환 씬에서 오열했습니다 ㅠㅠ 다들 이 영화 볼 때 휴지 필수입니다.', 
     hashtags: ['#로맨스', '#음악', '#폭풍눈물']
@@ -307,7 +307,7 @@ export default function CommunityScreen() {
             <View style={styles.inputSection}>
               <TextInput
                 style={styles.contentInput}
-                placeholder="이 콘텐츠에 대한 알버트님의 생각을 자유롭게 남겨주세요."
+                placeholder="이 콘텐츠에 대한 생각을 자유롭게 남겨주세요."
                 placeholderTextColor="#666"
                 multiline
                 maxLength={500}
