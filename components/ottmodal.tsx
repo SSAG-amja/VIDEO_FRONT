@@ -1,4 +1,6 @@
 // components/ottmodal.tsx
+//260401 임재준
+//상세정보에 삽입 하여 사용하지 않으나 추후 재사용을 위해 남겨둠
 import React from 'react';
 import { Modal, View, Text, StyleSheet, Pressable, Linking, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
