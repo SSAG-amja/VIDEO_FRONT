@@ -15,7 +15,7 @@ export const loginApi = async (email: string, password: string) => {
   formData.append('username', email); // 백엔드 보안 로직상 email이 username 역할을 함
   formData.append('password', password);
 
-  const response = await client.post('/api/v1/login/', formData, {
+  const response = await client.post('/api/v1/auth/signin', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
   return response.data; // { access_token: "...", token_type: "bearer" }
@@ -28,7 +28,7 @@ export const loginApi = async (email: string, password: string) => {
  * 백엔드 경로: /api/v1/users/signin
  */
 export const signinApi = async (email: string, password: string, nickname: string) => {
-  const response = await client.post('/api/v1/users/signin', {
+  const response = await client.post('/api/v1/auth/signup', {
     email,
     password,
     nickname,

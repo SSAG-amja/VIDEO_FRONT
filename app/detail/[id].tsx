@@ -53,7 +53,6 @@ export default function DetailScreen() {
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // 💡 최신 Pin 스토어 로직 적용 (객체 형태 확인)
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
   const togglePin = usePinStore((state) => state.togglePin);
   const isPinned = movieDetail ? pinnedMovies.some((m) => m.id === movieDetail.id) : false;
@@ -62,7 +61,9 @@ export default function DetailScreen() {
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
   
-  // 💡 최신 재생목록 스토어 로직 적용 (객체 형태 및 메서드 적용)
+  // ✅ 새 재생목록의 공개 여부를 관리하는 상태 (기본값: 비공개)
+  const [isNewPlaylistPublic, setIsNewPlaylistPublic] = useState(false);
+  
   const { customPlaylists, createPlaylist, addMovieToPlaylist } = usePlaylistStore();
 
   const closeModal = () => {
@@ -100,9 +101,9 @@ export default function DetailScreen() {
     const trimmedName = newPlaylistName.trim();
     if (trimmedName.length === 0) return;
 
-    createPlaylist(trimmedName);
+    // ✅ 이름과 함께 공개 여부 상태를 전달하여 재생목록 생성
+    createPlaylist(trimmedName, isNewPlaylistPublic);
     
-    // 방금 생성한 재생목록을 찾아 영화를 바로 추가
     const updatedPlaylists = usePlaylistStore.getState().customPlaylists;
     const newPlaylist = updatedPlaylists.find(p => p.name === trimmedName);
     
@@ -112,6 +113,7 @@ export default function DetailScreen() {
     
     setNewPlaylistName('');
     setIsCreatingNew(false);
+    setIsNewPlaylistPublic(false); // 생성 후 기본값으로 초기화
   };
 
   const handleOpenOtt = async (ott: typeof DUMMY_OTTS[0]) => {
@@ -224,7 +226,7 @@ export default function DetailScreen() {
         </View>
 
         <Modal visible={isPlaylistModalVisible} transparent={true} animationType="slide" onRequestClose={() => setPlaylistModalVisible(false)}>
-          <Pressable style={styles.modalOverlay} onPress={() => { setPlaylistModalVisible(false); setIsCreatingNew(false); }}>
+          <Pressable style={styles.modalOverlay} onPress={() => { setPlaylistModalVisible(false); setIsCreatingNew(false); setIsNewPlaylistPublic(false); }}>
             <Pressable style={styles.bottomSheet} onPress={(e) => e.stopPropagation()}>
               <View style={styles.sheetHandle} />
               <Text style={styles.sheetTitle}>재생목록에 저장</Text>
@@ -258,6 +260,26 @@ export default function DetailScreen() {
                     onChangeText={setNewPlaylistName}
                     autoFocus={true}
                   />
+
+                  {/* ✅ 공개/비공개 선택 영역 */}
+                  <View style={styles.privacySelector}>
+                    <Pressable 
+                      style={[styles.privacyOption, !isNewPlaylistPublic && styles.privacyOptionActive]} 
+                      onPress={() => setIsNewPlaylistPublic(false)}
+                    >
+                      <Ionicons name="lock-closed" size={20} color={!isNewPlaylistPublic ? "#FF5A36" : "#666"} />
+                      <Text style={[styles.privacyText, !isNewPlaylistPublic && styles.privacyTextActive]}>비공개</Text>
+                    </Pressable>
+                    
+                    <Pressable 
+                      style={[styles.privacyOption, isNewPlaylistPublic && styles.privacyOptionActive]} 
+                      onPress={() => setIsNewPlaylistPublic(true)}
+                    >
+                      <Ionicons name="lock-open" size={20} color={isNewPlaylistPublic ? "#FF5A36" : "#666"} />
+                      <Text style={[styles.privacyText, isNewPlaylistPublic && styles.privacyTextActive]}>공개</Text>
+                    </Pressable>
+                  </View>
+
                   <View style={styles.modalButtonContainer}>
                     <Pressable style={[styles.actionBtn, styles.cancelBtn]} onPress={() => setIsCreatingNew(false)}>
                       <Text style={styles.cancelBtnText}>취소</Text>
@@ -324,8 +346,17 @@ const styles = StyleSheet.create({
   addPlaylistText: { color: '#FF5A36', fontSize: 16, fontWeight: 'bold' },
   playlistItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#222' },
   playlistItemText: { color: '#fff', fontSize: 16 },
+  
   createFormContainer: { marginTop: 10 },
   textInput: { backgroundColor: '#0a0a0a', color: '#fff', borderRadius: 8, padding: 15, fontSize: 16, borderWidth: 1, borderColor: '#333', marginBottom: 20 },
+  
+  // ✅ 공개/비공개 선택 영역 스타일 (LibraryScreen과 동일)
+  privacySelector: { flexDirection: 'row', gap: 10, marginBottom: 24 },
+  privacyOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#333', backgroundColor: '#111', gap: 8 },
+  privacyOptionActive: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.1)' },
+  privacyText: { color: '#666', fontSize: 15, fontWeight: 'bold' },
+  privacyTextActive: { color: '#FF5A36' },
+
   modalButtonContainer: { flexDirection: 'row', gap: 10 },
   actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
   cancelBtn: { backgroundColor: '#333' },
