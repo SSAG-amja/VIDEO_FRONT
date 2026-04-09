@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { loginApi } from '../../api/auth';
+import * as SecureStore from 'expo-secure-store'; // ✨ 1. SecureStore 임포트 추가!
 
 export default function LoginScreen() {
   const [email, setEmail] = useState('');
@@ -12,6 +13,12 @@ export default function LoginScreen() {
     try {
       const data = await loginApi(email, password);
       console.log('Login Success:', data);
+      
+      // ✨ 2. 핵심 로직 추가: 받아온 토큰을 'userToken'이라는 이름으로 기기에 저장!
+      if (data && data.access_token) {
+        await SecureStore.setItemAsync('userToken', data.access_token);
+      }
+
       Alert.alert('성공', '로그인 되었습니다.');
       router.replace('/onboarding'); // 로그인 성공 시 온보딩으로!
     } catch (error: any) {
