@@ -1,42 +1,41 @@
-// store/usePlaylistStore.ts
 import { create } from 'zustand';
 
 interface MovieItem {
-  id: string; // id 타입을 string으로 통일 (API나 기존 하드코딩 데이터에 맞춤)
+  id: string;
   title: string;
   image: string;
-  addedAt?: string; // 추가된 시간 등 필요한 정보
+  addedAt?: string;
 }
 
 interface Playlist {
   id: string;
   name: string;
   movies: MovieItem[];
+  isPublic: boolean;
 }
 
 interface PlaylistState {
-  // 사용자가 생성한 플레이리스트 목록 (Saved 탭에 표시됨)
   customPlaylists: Playlist[]; 
-  
-  // 플레이리스트 생성
-  createPlaylist: (name: string) => void;
-  // 특정 플레이리스트에 영화 추가
+  // ✅ isPublic 매개변수 추가 (기본값은 false)
+  createPlaylist: (name: string, isPublic?: boolean) => void;
   addMovieToPlaylist: (playlistId: string, movie: MovieItem) => void;
-  // 특정 플레이리스트 삭제
   deletePlaylist: (playlistId: string) => void;
+  togglePlaylistVisibility: (playlistId: string) => void;
+  removeMovieFromPlaylist: (playlistId: string, movieId: string) => void; 
 }
 
 export const usePlaylistStore = create<PlaylistState>((set) => ({
   customPlaylists: [], 
   
-  createPlaylist: (name) => set((state) => {
-    // 이름 중복 검사
+  // ✅ 두 번째 인자로 isPublic을 받아 적용합니다.
+  createPlaylist: (name, isPublic = false) => set((state) => {
     if (state.customPlaylists.some(p => p.name === name)) return state;
     
     const newPlaylist: Playlist = {
-      id: Date.now().toString(), // 고유 ID 생성
+      id: Date.now().toString(),
       name,
       movies: [],
+      isPublic, // 선택한 공개/비공개 상태 적용
     };
     return { customPlaylists: [...state.customPlaylists, newPlaylist] };
   }),
@@ -45,7 +44,6 @@ export const usePlaylistStore = create<PlaylistState>((set) => ({
     return {
       customPlaylists: state.customPlaylists.map(playlist => {
         if (playlist.id === playlistId) {
-          // 이미 추가된 영화인지 확인
           if (playlist.movies.some(m => m.id === movie.id)) return playlist;
           return { ...playlist, movies: [...playlist.movies, movie] };
         }
@@ -56,5 +54,25 @@ export const usePlaylistStore = create<PlaylistState>((set) => ({
 
   deletePlaylist: (playlistId) => set((state) => ({
     customPlaylists: state.customPlaylists.filter(p => p.id !== playlistId)
+  })),
+
+  togglePlaylistVisibility: (playlistId) => set((state) => ({
+    customPlaylists: state.customPlaylists.map(playlist => 
+      playlist.id === playlistId 
+        ? { ...playlist, isPublic: !playlist.isPublic }
+        : playlist
+    )
+  })),
+
+  removeMovieFromPlaylist: (playlistId, movieId) => set((state) => ({
+    customPlaylists: state.customPlaylists.map(playlist => {
+      if (playlist.id === playlistId) {
+        return {
+          ...playlist,
+          movies: playlist.movies.filter(movie => movie.id !== movieId)
+        };
+      }
+      return playlist;
+    })
   })),
 }));
