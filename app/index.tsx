@@ -8,7 +8,7 @@ export default function SplashScreen() {
     // 💡 2초 뒤에 '온보딩'이 아니라 '로그인 화면'으로 이동하도록 수정
     const timer = setTimeout(() => {
       // (auth) 그룹 폴더 안에 있으므로 /login으로 보내면 됩니다.
-      router.replace('/login'); 
+      router.replace('/signin'); 
   }, 2000);
 
   return () => clearTimeout(timer);

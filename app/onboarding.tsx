@@ -69,7 +69,7 @@ export default function OnboardingScreen() {
     }, 1000);
   };
 
-  // 백엔드 통신 로직
+  // 백엔드 통신 로직 (임시 우회)
   const submitOnboardingData = async () => {
     if (selectedOtts.length === 0 || selectedGenres.length === 0 || selectedMovies.length === 0) {
       Alert.alert('알림', '모든 항목을 최소 1개 이상 선택해주세요.');
@@ -77,50 +77,50 @@ export default function OnboardingScreen() {
     }
 
     setIsSubmitting(true);
-    try {
-      // ✨ 1. 저장된 토큰 가져오기 (로그인 시 저장한 키값과 동일해야 함. 예: 'userToken' 또는 'access_token')
-      const token = await SecureStore.getItemAsync('userToken');
+    
+    // 로딩 스피너 살짝 보여주기 위해 0.5초 대기 후 바로 이동
+    setTimeout(() => {
+      /* // 💡 나중에 백엔드 API 연동할 때 아래 주석 풀고 사용!
+      try {
+        const token = await SecureStore.getItemAsync('userToken');
+        if (!token) {
+          Alert.alert('인증 오류', '로그인 정보가 만료되었습니다.');
+          setIsSubmitting(false);
+          return;
+        }
 
-      // ✨ 2. 토큰이 없는 경우 예외 처리
-      if (!token) {
-        Alert.alert('인증 오류', '로그인 정보가 만료되었습니다. 다시 로그인해주세요.');
+        const payload = {
+          ott_ids: selectedOtts,
+          genre_ids: selectedGenres,
+          movie_ids: selectedMovies,
+        };
+
+        const ENDPOINT = `${API_BASE_URL}/api/v1/users/me/onboarding`; // 백엔드 주소 맞춰서 수정 필요
+
+        const response = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}` 
+          },
+          body: JSON.stringify(payload),
+        });
+
+        if (!response.ok) {
+          throw new Error('데이터 저장 실패');
+        }
+      } catch (error) {
+        console.error(error);
+        Alert.alert('오류', '서버 통신 실패');
         setIsSubmitting(false);
-        // 필요하다면 여기서 로그인 화면으로 리다이렉트: router.replace('/login');
         return;
       }
+      */
 
-      const payload = {
-        ott_ids: selectedOtts,
-        genre_ids: selectedGenres,
-        movie_ids: selectedMovies,
-      };
-
-      const ENDPOINT = `${API_BASE_URL}/api/v1/user/me/onboarding`;
-
-      const response = await fetch(ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          // ✨ 3. Authorization 헤더에 토큰 주입
-          'Authorization': `Bearer ${token}` 
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (response.ok) {
-        const result = await response.json();
-        console.log('온보딩 성공:', result);
-        router.replace('/(tabs)');
-      } else {
-        const errorData = await response.json();
-        Alert.alert('오류', errorData.detail || '데이터 저장 중 문제가 발생했습니다.');
-      }
-    } catch (error) {
-      console.error('API 통신 에러:', error);
-      Alert.alert('오류', `서버와 연결할 수 없습니다. 주소 확인: ${API_BASE_URL}`);
-    } finally {
+      // API 성공했다고 치고 바로 메인 탭으로 이동
       setIsSubmitting(false);
-    }
+      router.replace('/(tabs)');
+    }, 500);
   };
 
   const handleNext = () => {

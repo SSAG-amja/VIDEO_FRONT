@@ -2,36 +2,38 @@ import React, { useState } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signinApi } from '../../api/auth';
+import * as SecureStore from 'expo-secure-store';
 
-//260315 박현식
-//회원가입
 export default function SigninScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [nickname, setNickname] = useState('');
   const router = useRouter();
 
   const handleSignin = async () => {
     try {
-      await signinApi(email, password, nickname);
-      Alert.alert('성공', '가입되었습니다! 이제 로그인해주세요.');
-      router.replace('/login'); // 회원가입 후 로그인으로 이동
+      const data = await signinApi(email, password);
+      
+      if (data && data.access_token) {
+        await SecureStore.setItemAsync('userToken', data.access_token);
+      }
+
+      Alert.alert('성공', '로그인 되었습니다.');
+      
+      // 온보딩 완료 여부에 따라 화면 이동 분기
+      if (data.is_onboarding_completed) {
+        router.replace('/main'); // 메인 화면 경로에 맞게 수정하세요
+      } else {
+        router.replace('/onboarding');
+      }
     } catch (error: any) {
       console.error(error);
-      Alert.alert('오류', '회원가입에 실패했습니다.');
+      Alert.alert('오류', '이메일 또는 비밀번호를 확인하세요.');
     }
   };
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>회원가입</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="닉네임"
-        placeholderTextColor="#666"
-        value={nickname}
-        onChangeText={setNickname}
-      />
+      <Text style={styles.title}>로그인</Text>
       <TextInput
         style={styles.input}
         placeholder="이메일"
@@ -49,11 +51,12 @@ export default function SigninScreen() {
         secureTextEntry
       />
       <Pressable style={styles.button} onPress={handleSignin}>
-        <Text style={styles.buttonText}>가입하기</Text>
+        <Text style={styles.buttonText}>로그인</Text>
       </Pressable>
       
-      <Pressable onPress={() => router.back()}>
-        <Text style={styles.linkText}>이미 계정이 있나요? 로그인</Text>
+      {/* 회원가입 페이지로 이동 */}
+      <Pressable onPress={() => router.push('/signup')}>
+        <Text style={styles.linkText}>계정이 없으신가요? 회원가입</Text>
       </Pressable>
     </View>
   );
