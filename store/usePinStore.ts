@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 
-// 💡 저장할 영화 객체의 타입 정의
 export interface PinnedMovie {
   id: number;
   title: string;
@@ -8,14 +7,15 @@ export interface PinnedMovie {
 }
 
 interface PinState {
-  pinnedMovies: PinnedMovie[]; // 이제 숫자 배열이 아닌 객체 배열을 저장합니다.
+  pinnedMovies: PinnedMovie[];
   togglePin: (movie: PinnedMovie) => void;
+  // ✅ Pin 목록 순서 변경 함수 추가
+  updatePinOrder: (newMovies: PinnedMovie[]) => void;
 }
 
 export const usePinStore = create<PinState>((set) => ({
   pinnedMovies: [],
   togglePin: (movie) => set((state) => {
-    // 💡 ID로 중복 여부를 검사합니다.
     const isPinned = state.pinnedMovies.some(m => m.id === movie.id);
     if (isPinned) {
       return { pinnedMovies: state.pinnedMovies.filter(m => m.id !== movie.id) };
@@ -23,4 +23,6 @@ export const usePinStore = create<PinState>((set) => ({
       return { pinnedMovies: [...state.pinnedMovies, movie] };
     }
   }),
+  // ✅ 드래그 앤 드롭 후 새로운 배열로 덮어씌웁니다.
+  updatePinOrder: (newMovies) => set({ pinnedMovies: newMovies }),
 }));

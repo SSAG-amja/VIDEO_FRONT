@@ -2,10 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { View, Text, TextInput, Pressable, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signupApi } from '../../api/auth';
-// 커스텀 피커를 위한 라이브러리
 import { Picker } from '@react-native-picker/picker';
+// 🟢 안드로이드 네이티브 피커를 위한 라이브러리 추가
+import DateTimePicker from '@react-native-community/datetimepicker';
 
-// --- 커스텀 데이트 피커 모달 컴포넌트 (디자인 통일) ---
+// --- 커스텀 데이트 피커 모달 컴포넌트 (iOS용 디자인 통일) ---
 interface DatePickerModalProps {
   isVisible: boolean;
   onClose: () => void;
@@ -16,13 +17,11 @@ interface DatePickerModalProps {
 const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, onConfirm, initialDate }) => {
   const today = new Date();
   
-  // 초기값 설정
   const init = useMemo(() => {
     if (initialDate) {
       const parts = initialDate.split('-');
       return { year: parts[0], month: parts[1], day: parts[2] };
     }
-    // 기본값은 20년 전으로 설정 (가입 편의성)
     const defaultDate = new Date(today.getFullYear() - 20, today.getMonth(), today.getDate());
     return {
       year: String(defaultDate.getFullYear()),
@@ -35,20 +34,17 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
   const [selectedMonth, setSelectedMonth] = useState(init.month);
   const [selectedDay, setSelectedDay] = useState(init.day);
 
-  // 연도 범위 생성 (올해부터 100년 전까지)
   const years = useMemo(() => {
     const currentYear = today.getFullYear();
     return Array.from({ length: 101 }, (_, i) => String(currentYear - i));
   }, []);
 
-  // 월 생성 (01 ~ 12)
   const months = useMemo(() => Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), []);
 
-  // 선택된 연/월에 따른 일수 생성 (윤년 계산 포함)
   const days = useMemo(() => {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
-    const lastDay = new Date(year, month, 0).getDate(); // 0일은 이전 달의 마지막 날
+    const lastDay = new Date(year, month, 0).getDate(); 
     return Array.from({ length: lastDay }, (_, i) => String(i + 1).padStart(2, '0'));
   }, [selectedYear, selectedMonth]);
 
@@ -70,7 +66,6 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
           </View>
           
           <View style={styles.pickerContainer}>
-            {/* 🟢 연도 - 공간 넓힘 (flex: 1.4) */}
             <Picker
               selectedValue={selectedYear}
               onValueChange={(itemValue) => setSelectedYear(itemValue)}
@@ -80,7 +75,6 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
               {years.map(year => <Picker.Item key={year} label={`${year}년`} value={year} color="#fff" />)}
             </Picker>
 
-            {/* 월 - 기본 유지 */}
             <Picker
               selectedValue={selectedMonth}
               onValueChange={(itemValue) => setSelectedMonth(itemValue)}
@@ -90,7 +84,6 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
               {months.map(month => <Picker.Item key={month} label={`${month}월`} value={month} color="#fff" />)}
             </Picker>
 
-            {/* 일 - 기본 유지 */}
             <Picker
               selectedValue={selectedDay}
               onValueChange={(itemValue) => setSelectedDay(itemValue)}
@@ -115,15 +108,15 @@ export default function SignupScreen() {
   const [password, setPassword] = useState('');
   const [passwordCheck, setPasswordCheck] = useState('');
   const [nickname, setNickname] = useState('');
-  const [birthDate, setBirthDate] = useState(''); // YYYY-MM-DD 형식 저장
+  const [birthDate, setBirthDate] = useState(''); 
   const [gender, setGender] = useState<'M' | 'F' | ''>('');
   
-  // 커스텀 피커 모달 상태
-  const [isDatePickerVisible, setIsDatePickerVisible] = useState(false);
+  // 피커 가시성 상태 관리
+  const [isIOSPickerVisible, setIsIOSPickerVisible] = useState(false);
+  const [isAndroidPickerVisible, setIsAndroidPickerVisible] = useState(false);
 
   const router = useRouter();
 
-  // 유효성 검사 상태
   const isEmailError = email !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
   const isPasswordError = password !== '' && password.length < 8;
   const isPasswordCheckError = passwordCheck !== '' && password !== passwordCheck;
@@ -146,6 +139,36 @@ export default function SignupScreen() {
       console.error(error);
       Alert.alert('오류', '회원가입에 실패했습니다.');
     }
+  };
+
+  // 🟢 생년월일 클릭 시 운영체제 분기 처리
+  const openDatePicker = () => {
+    if (Platform.OS === 'android') {
+      setIsAndroidPickerVisible(true);
+    } else {
+      setIsIOSPickerVisible(true);
+    }
+  };
+
+  // 🟢 안드로이드 데이트 피커 체인지 핸들러
+  const handleAndroidDateChange = (event: any, selectedDate?: Date) => {
+    setIsAndroidPickerVisible(false); // 선택 후 바로 닫기
+    if (selectedDate && event.type !== 'dismissed') {
+      const year = selectedDate.getFullYear();
+      const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+      const day = String(selectedDate.getDate()).padStart(2, '0');
+      setBirthDate(`${year}-${month}-${day}`);
+    }
+  };
+
+  // 안드로이드 피커 초기값 설정 헬퍼
+  const getAndroidInitialDate = () => {
+    if (birthDate) {
+      const [y, m, d] = birthDate.split('-');
+      return new Date(Number(y), Number(m) - 1, Number(d));
+    }
+    const today = new Date();
+    return new Date(today.getFullYear() - 20, today.getMonth(), today.getDate());
   };
 
   return (
@@ -199,15 +222,14 @@ export default function SignupScreen() {
           onChangeText={setNickname}
         />
 
-        {/* 🟢 생년월일 (커스텀 피커 모달 호출) */}
-        <Pressable onPress={() => setIsDatePickerVisible(true)}>
-          {/* 터치 이벤트를 Pressable이 가져가고, TextInput은 디자인용으로만 씀 */}
+        {/* 🟢 생년월일 입력창 */}
+        <Pressable onPress={openDatePicker}>
           <View pointerEvents="none">
             <TextInput
               style={styles.input}
               placeholder="생년월일 선택 (연-월-일)"
               placeholderTextColor="#666"
-              value={birthDate} // YYYY-MM-DD 가 표시됨
+              value={birthDate}
               editable={false}
             />
           </View>
@@ -238,13 +260,26 @@ export default function SignupScreen() {
         </Pressable>
       </ScrollView>
 
-      {/* 🟢 커스텀 데이트 피커 모달 */}
-      <DatePickerModal 
-        isVisible={isDatePickerVisible}
-        onClose={() => setIsDatePickerVisible(false)}
-        onConfirm={(dateString) => setBirthDate(dateString)}
-        initialDate={birthDate}
-      />
+      {/* 🟢 커스텀 데이트 피커 모달 (iOS 전용) */}
+      {Platform.OS === 'ios' && (
+        <DatePickerModal 
+          isVisible={isIOSPickerVisible}
+          onClose={() => setIsIOSPickerVisible(false)}
+          onConfirm={(dateString) => setBirthDate(dateString)}
+          initialDate={birthDate}
+        />
+      )}
+
+      {/* 🟢 안드로이드 네이티브 피커 (Android 전용) */}
+      {Platform.OS === 'android' && isAndroidPickerVisible && (
+        <DateTimePicker
+          value={getAndroidInitialDate()}
+          mode="date"
+          display="spinner" // 'calendar'로 변경하면 달력 UI로 나옵니다.
+          maximumDate={new Date()} // 오늘 이후 날짜 선택 방지
+          onChange={handleAndroidDateChange}
+        />
+      )}
     </KeyboardAvoidingView>
   );
 }
@@ -268,7 +303,6 @@ const styles = StyleSheet.create({
   linkContainer: { marginTop: 20, padding: 10 },
   linkText: { color: '#aaa', textAlign: 'center', fontSize: 14 },
 
-  // --- 모달 및 커스텀 피커 스타일 (다크 모드 디자인) ---
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
   modalContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 20, borderTopWidth: 1, borderColor: '#333' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
@@ -276,6 +310,6 @@ const styles = StyleSheet.create({
   modalConfirmText: { color: '#FF5A36', fontSize: 18, fontWeight: 'bold' },
   
   pickerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  picker: { flex: 1, height: Platform.OS === 'ios' ? 216 : 150, color: '#fff' }, // 안드로이드는 높이 제한 필요
-  pickerItem: { fontSize: 20, color: '#fff' }, // iOS용 스타일
+  picker: { flex: 1, height: Platform.OS === 'ios' ? 216 : 150, color: '#fff' },
+  pickerItem: { fontSize: 20, color: '#fff' }, 
 });
