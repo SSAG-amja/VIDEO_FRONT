@@ -102,14 +102,25 @@ export default function LibraryScreen() {
   }, [activeTab, displayPinned, pinnedMovies, customPlaylists, sortType, sortOrder]);
 
   const handleScrollToLetter = (letter: string) => {
-    const index = sortedData.findIndex((item: any) => {
+    let index = sortedData.findIndex((item: any) => {
       const title = item.title || item.name || "";
       const chosung = getChosung(title);
-      if (/[A-Z]/.test(letter)) {
-        return chosung >= letter; 
+
+      // localeCompare를 통해 글자의 대소(순서)를 비교합니다.
+      // 조건에 맞는 '첫 번째' 인덱스를 찾기 때문에, 
+      // 1칸이든 10칸이든 비어있는 인덱스는 모두 건너뛰고 가장 가까운 항목에 안착합니다.
+      if (sortOrder === 'asc') {
+        return chosung.localeCompare(letter) >= 0; 
+      } else {
+        return chosung.localeCompare(letter) <= 0;
       }
-      return chosung === letter;
     });
+
+    // 만약 해당하는 항목이 아예 없다면 (예: 'Z'를 클릭했는데 'P'까지만 있는 경우)
+    // 자연스러운 UX를 위해 리스트의 맨 끝(또는 처음)으로 스크롤합니다.
+    if (index === -1 && sortedData.length > 0) {
+      index = sortOrder === 'asc' ? sortedData.length - 1 : 0;
+    }
 
     if (index !== -1 && flatListRef.current) {
       flatListRef.current.scrollToIndex({ index, animated: true, viewPosition: 0 });
