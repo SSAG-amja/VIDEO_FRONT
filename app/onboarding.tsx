@@ -6,8 +6,9 @@ import * as SecureStore from 'expo-secure-store';
 
 import { API_BASE_URL } from "../constants/api";
 
-// 🔑 TMDB 다이렉트 호출용 API 키 (여기에 실제 키를 넣어주세요!)
-const TMDB_API_KEY = "e7d44a8532cecb92b04d5e976449f337"; 
+// ✅ 1. .env 파일에서 안전하게 API 키 불러오기
+// 주의: .env 파일에 반드시 EXPO_PUBLIC_TMDB_API_KEY=키값 형태로 저장되어 있어야 합니다.
+const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 
 const OTTS = [
   { id: 1, name: '넷플릭스' }, { id: 2, name: '왓챠' }, { id: 3, name: '티빙' }, 
@@ -15,7 +16,6 @@ const OTTS = [
   { id: 7, name: '애플TV+' }
 ];
 
-// ✅ TMDB 공식 ID 기준으로 깔끔하게 업데이트된 장르
 const GENRES = [
   { id: 28, name: '액션' }, { id: 12, name: '모험' }, { id: 16, name: '애니메이션' }, 
   { id: 35, name: '코미디' }, { id: 80, name: '범죄' }, { id: 99, name: '다큐멘터리' },
@@ -46,9 +46,13 @@ export default function OnboardingScreen() {
     }
   };
 
-  // TMDB API 직접 호출 함수
   const fetchFromTMDB = async (genreIds: number[], pageNum: number) => {
     try {
+      if (!TMDB_API_KEY) {
+        console.error("API 키가 없습니다. .env 파일을 확인해주세요.");
+        return [];
+      }
+
       const genreString = genreIds.join(',');
       const url = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ko-KR&sort_by=vote_average.desc&vote_count.gte=100&with_genres=${genreString}&page=${pageNum}`;
       
@@ -115,7 +119,6 @@ export default function OnboardingScreen() {
     }
   };
 
-  // ✅ 이전 단계로 돌아가는 함수 추가
   const handleBack = () => {
     if (step > 1) {
       setStep(step - 1);
@@ -136,7 +139,7 @@ export default function OnboardingScreen() {
 
     setIsSubmitting(true);
     
-    // API 주석 처리 중 (프론트 통과 임시 로직)
+    // API 통신 임시 주석 처리
     setTimeout(() => {
       setIsSubmitting(false);
       router.replace('/(tabs)'); 
@@ -155,7 +158,6 @@ export default function OnboardingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        {/* ✅ 이전 버튼이 추가된 헤더 상단 영역 */}
         <View style={styles.stepHeaderRow}>
           <Text style={styles.stepText}>STEP {step}/3</Text>
           {step > 1 && (
@@ -268,13 +270,10 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 20, paddingBottom: 100 },
   flatListContent: { paddingHorizontal: 15, paddingBottom: 100 },
   header: { paddingHorizontal: 20, marginTop: 60, marginBottom: 20 },
-  
-  // ✅ 헤더 및 이전 버튼 스타일 추가
   stepHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   stepText: { color: '#FF5A36', fontSize: 14, fontWeight: 'bold', letterSpacing: 1 },
   prevButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#333' },
   prevButtonText: { color: '#aaa', fontSize: 12, marginLeft: 4, fontWeight: '600' },
-  
   title: { color: '#fff', fontSize: 26, fontWeight: 'bold', lineHeight: 36, marginBottom: 20 },
   progressBarContainer: { height: 4, borderRadius: 2, backgroundColor: '#333', overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: '#FF5A36' },
