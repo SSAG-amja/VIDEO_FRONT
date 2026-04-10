@@ -2,49 +2,40 @@ import { useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, Alert } from 'react-native';
 import { router } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store'; // ✨ SecureStore 임포트 추가
+import * as SecureStore from 'expo-secure-store';
 
-// 방금 만든 api 유틸리티 함수 import (경로는 실제 프로젝트 구조에 맞게 수정해주세요)
 import { API_BASE_URL } from "../constants/api";
 
-// --- DB 테이블 기준 데이터 매핑 ---
+// 🔑 TMDB 다이렉트 호출용 API 키 (여기에 실제 키를 넣어주세요!)
+const TMDB_API_KEY = "e7d44a8532cecb92b04d5e976449f337"; 
+
 const OTTS = [
   { id: 1, name: '넷플릭스' }, { id: 2, name: '왓챠' }, { id: 3, name: '티빙' }, 
   { id: 4, name: '웨이브' }, { id: 5, name: '디즈니+' }, { id: 6, name: '쿠팡플레이' }, 
   { id: 7, name: '애플TV+' }
 ];
 
+// ✅ TMDB 공식 ID 기준으로 깔끔하게 업데이트된 장르
 const GENRES = [
-  { id: 1, name: '액션' }, { id: 2, name: '어드벤처' }, { id: 3, name: '애니메이션' }, 
-  { id: 4, name: '코미디' }, { id: 5, name: '범죄' }, { id: 6, name: '다큐멘터리' },
-  { id: 7, name: '드라마' }, { id: 8, name: '가족' }, { id: 9, name: '판타지' }, 
-  { id: 10, name: '역사' }, { id: 11, name: '호러' }, { id: 12, name: '음악' },
-  { id: 13, name: '미스터리' }, { id: 14, name: '로맨스' }, { id: 15, name: 'SF' }, 
-  { id: 16, name: 'TV 영화' }, { id: 17, name: '스릴러' }, { id: 18, name: '전쟁' },
-  { id: 19, name: '서부' }
-];
-
-const INITIAL_MOVIES = [
-  { id: 1, title: '인터스텔라', image: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg' },
-  { id: 2, title: '라라랜드', image: 'https://image.tmdb.org/t/p/w500/uDO8zWDhfWwoFdKS4fzkUJt0Vy0.jpg' },
-  { id: 3, title: '올드보이', image: 'https://image.tmdb.org/t/p/w500/pT1xYy2y2mO5yHmbR11iZ890KzE.jpg' },
-  { id: 4, title: '다크 나이트', image: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg' },
-  { id: 5, title: '인셉션', image: 'https://image.tmdb.org/t/p/w500/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg' },
-  { id: 6, title: '매트릭스', image: 'https://image.tmdb.org/t/p/w500/f89U3ADr1oiB1s9GkdPOEpXUk5H.jpg' },
-  { id: 7, title: '어벤져스', image: 'https://image.tmdb.org/t/p/w500/RYMX2wcKCBAr24UyPD7xwmja8y.jpg' },
-  { id: 8, title: '기생충', image: 'https://image.tmdb.org/t/p/w500/7BsvSuDQuoqhWmU2fL7W2GOcZHU.jpg' },
-  { id: 9, title: '아바타', image: 'https://image.tmdb.org/t/p/w500/jRXYjXNqOce2shMelB4wGDs5Lp1.jpg' },
+  { id: 28, name: '액션' }, { id: 12, name: '모험' }, { id: 16, name: '애니메이션' }, 
+  { id: 35, name: '코미디' }, { id: 80, name: '범죄' }, { id: 99, name: '다큐멘터리' },
+  { id: 18, name: '드라마' }, { id: 10751, name: '가족' }, { id: 14, name: '판타지' }, 
+  { id: 36, name: '역사' }, { id: 27, name: '공포' }, { id: 10402, name: '음악' },
+  { id: 9648, name: '미스터리' }, { id: 10749, name: '로맨스' }, { id: 878, name: 'SF' }, 
+  { id: 10770, name: 'TV 영화' }, { id: 53, name: '스릴러' }, { id: 10752, name: '전쟁' },
+  { id: 37, name: '서부' }
 ];
 
 export default function OnboardingScreen() {
   const [step, setStep] = useState<number>(1);
-
   const [selectedOtts, setSelectedOtts] = useState<number[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
   const [selectedMovies, setSelectedMovies] = useState<number[]>([]);
 
-  const [movies, setMovies] = useState(INITIAL_MOVIES);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [movies, setMovies] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
+  const [isFetchingMovies, setIsFetchingMovies] = useState(false); 
+  const [isLoadingMore, setIsLoadingMore] = useState(false);     
   const [isSubmitting, setIsSubmitting] = useState(false); 
 
   const toggleItem = (itemId: number, selectedList: number[], setSelectedList: any) => {
@@ -55,21 +46,88 @@ export default function OnboardingScreen() {
     }
   };
 
-  const loadMoreMovies = () => {
-    if (isLoadingMore) return;
-    setIsLoadingMore(true);
-    
-    setTimeout(() => {
-      const newMovies = [
-        { id: Date.now() + 1, title: '새로운 영화 1', image: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg' },
-        { id: Date.now() + 2, title: '새로운 영화 2', image: 'https://image.tmdb.org/t/p/w500/uDO8zWDhfWwoFdKS4fzkUJt0Vy0.jpg' },
-      ];
-      setMovies((prev) => [...prev, ...newMovies]);
-      setIsLoadingMore(false);
-    }, 1000);
+  // TMDB API 직접 호출 함수
+  const fetchFromTMDB = async (genreIds: number[], pageNum: number) => {
+    try {
+      const genreString = genreIds.join(',');
+      const url = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ko-KR&sort_by=vote_average.desc&vote_count.gte=100&with_genres=${genreString}&page=${pageNum}`;
+      
+      const response = await fetch(url);
+      const data = await response.json();
+      
+      if (!data.results) return [];
+
+      return data.results.map((item: any) => ({
+        id: item.id,
+        title: item.title,
+        image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://via.placeholder.com/500x750?text=No+Image',
+      }));
+    } catch (err) {
+      console.error("TMDB 호출 에러:", err);
+      return [];
+    }
   };
 
-  // 백엔드 통신 로직 (임시 우회)
+  const loadMovies = async (targetPage: number, isInitial: boolean = false) => {
+    if (selectedGenres.length === 0) return;
+
+    if (isInitial) {
+      setIsFetchingMovies(true);
+      setPage(1);
+    } else {
+      if (isLoadingMore) return;
+      setIsLoadingMore(true);
+    }
+
+    try {
+      const newMovies = await fetchFromTMDB(selectedGenres, targetPage);
+
+      if (newMovies && newMovies.length > 0) {
+        setMovies(prev => {
+          if (isInitial) return newMovies;
+          
+          const existingIds = new Set(prev.map(m => m.id));
+          const uniqueNewMovies = newMovies.filter((m: any) => !existingIds.has(m.id));
+          return [...prev, ...uniqueNewMovies];
+        });
+        setPage(targetPage);
+      }
+    } catch (error) {
+      console.error("영화 로드 실패:", error);
+    } finally {
+      setIsFetchingMovies(false);
+      setIsLoadingMore(false);
+      if (isInitial) setStep(3);
+    }
+  };
+
+  const handleNext = () => {
+    if (step === 1) {
+      setStep(2);
+    } else if (step === 2) {
+      if (selectedGenres.length === 0) {
+        Alert.alert('알림', '최소 1개 이상의 장르를 선택해주세요.');
+        return;
+      }
+      loadMovies(1, true);
+    } else {
+      submitOnboardingData();
+    }
+  };
+
+  // ✅ 이전 단계로 돌아가는 함수 추가
+  const handleBack = () => {
+    if (step > 1) {
+      setStep(step - 1);
+    }
+  };
+
+  const handleLoadMore = () => {
+    if (!isLoadingMore && !isFetchingMovies && movies.length > 0) {
+      loadMovies(page + 1);
+    }
+  };
+
   const submitOnboardingData = async () => {
     if (selectedOtts.length === 0 || selectedGenres.length === 0 || selectedMovies.length === 0) {
       Alert.alert('알림', '모든 항목을 최소 1개 이상 선택해주세요.');
@@ -78,57 +136,11 @@ export default function OnboardingScreen() {
 
     setIsSubmitting(true);
     
-    // 로딩 스피너 살짝 보여주기 위해 0.5초 대기 후 바로 이동
+    // API 주석 처리 중 (프론트 통과 임시 로직)
     setTimeout(() => {
-      /* // 💡 나중에 백엔드 API 연동할 때 아래 주석 풀고 사용!
-      try {
-        const token = await SecureStore.getItemAsync('userToken');
-        if (!token) {
-          Alert.alert('인증 오류', '로그인 정보가 만료되었습니다.');
-          setIsSubmitting(false);
-          return;
-        }
-
-        const payload = {
-          ott_ids: selectedOtts,
-          genre_ids: selectedGenres,
-          movie_ids: selectedMovies,
-        };
-
-        const ENDPOINT = `${API_BASE_URL}/api/v1/users/me/onboarding`; // 백엔드 주소 맞춰서 수정 필요
-
-        const response = await fetch(ENDPOINT, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}` 
-          },
-          body: JSON.stringify(payload),
-        });
-
-        if (!response.ok) {
-          throw new Error('데이터 저장 실패');
-        }
-      } catch (error) {
-        console.error(error);
-        Alert.alert('오류', '서버 통신 실패');
-        setIsSubmitting(false);
-        return;
-      }
-      */
-
-      // API 성공했다고 치고 바로 메인 탭으로 이동
       setIsSubmitting(false);
-      router.replace('/(tabs)');
+      router.replace('/(tabs)'); 
     }, 500);
-  };
-
-  const handleNext = () => {
-    if (step < 3) {
-      setStep(step + 1);
-    } else {
-      submitOnboardingData();
-    }
   };
 
   const getStepTitle = () => {
@@ -143,7 +155,16 @@ export default function OnboardingScreen() {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.stepText}>STEP {step}/3</Text>
+        {/* ✅ 이전 버튼이 추가된 헤더 상단 영역 */}
+        <View style={styles.stepHeaderRow}>
+          <Text style={styles.stepText}>STEP {step}/3</Text>
+          {step > 1 && (
+            <Pressable onPress={handleBack} style={styles.prevButton}>
+              <Feather name="chevron-left" size={16} color="#aaa" />
+              <Text style={styles.prevButtonText}>이전 단계</Text>
+            </Pressable>
+          )}
+        </View>
         <Text style={styles.title}>{getStepTitle()}</Text>
         <View style={styles.progressBarContainer}>
           <View style={[styles.progressBarFill, { width: `${(step / 3) * 100}%` }]} />
@@ -151,72 +172,85 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.contentArea}>
-        {step === 1 && (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            <View style={styles.tagContainer}>
-              {OTTS.map((ott) => {
-                const isSelected = selectedOtts.includes(ott.id);
-                return (
-                  <Pressable key={ott.id} onPress={() => toggleItem(ott.id, selectedOtts, setSelectedOtts)} style={[styles.genreTag, isSelected && styles.genreTagSelected]}>
-                    {isSelected && <Feather name="check" size={16} color="#111" style={styles.checkIcon} />}
-                    <Text style={[styles.genreText, isSelected && styles.genreTextSelected]}>{ott.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        )}
+        {isFetchingMovies ? (
+          <View style={styles.loadingArea}>
+            <ActivityIndicator size="large" color="#FF5A36" />
+            <Text style={styles.loadingText}>선택하신 장르의 명작을 찾는 중...</Text>
+          </View>
+        ) : (
+          <>
+            {step === 1 && (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                <View style={styles.tagContainer}>
+                  {OTTS.map((ott) => {
+                    const isSelected = selectedOtts.includes(ott.id);
+                    return (
+                      <Pressable key={ott.id} onPress={() => toggleItem(ott.id, selectedOtts, setSelectedOtts)} style={[styles.genreTag, isSelected && styles.genreTagSelected]}>
+                        {isSelected && <Feather name="check" size={16} color="#111" style={styles.checkIcon} />}
+                        <Text style={[styles.genreText, isSelected && styles.genreTextSelected]}>{ott.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
 
-        {step === 2 && (
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-            <View style={styles.tagContainer}>
-              {GENRES.map((genre) => {
-                const isSelected = selectedGenres.includes(genre.id);
-                return (
-                  <Pressable key={genre.id} onPress={() => toggleItem(genre.id, selectedGenres, setSelectedGenres)} style={[styles.genreTag, isSelected && styles.genreTagSelected]}>
-                    {isSelected && <Feather name="check" size={16} color="#111" style={styles.checkIcon} />}
-                    <Text style={[styles.genreText, isSelected && styles.genreTextSelected]}>{genre.name}</Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          </ScrollView>
-        )}
+            {step === 2 && (
+              <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
+                <View style={styles.tagContainer}>
+                  {GENRES.map((genre) => {
+                    const isSelected = selectedGenres.includes(genre.id);
+                    return (
+                      <Pressable key={genre.id} onPress={() => toggleItem(genre.id, selectedGenres, setSelectedGenres)} style={[styles.genreTag, isSelected && styles.genreTagSelected]}>
+                        {isSelected && <Feather name="check" size={16} color="#111" style={styles.checkIcon} />}
+                        <Text style={[styles.genreText, isSelected && styles.genreTextSelected]}>{genre.name}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </ScrollView>
+            )}
 
-        {step === 3 && (
-          <FlatList
-            data={movies}
-            keyExtractor={(item) => item.id.toString()}
-            numColumns={3}
-            columnWrapperStyle={styles.movieRow}
-            contentContainerStyle={styles.flatListContent}
-            showsVerticalScrollIndicator={false}
-            onEndReached={loadMoreMovies}
-            onEndReachedThreshold={0.5}
-            ListFooterComponent={isLoadingMore ? <ActivityIndicator size="small" color="#FF5A36" style={{ marginVertical: 20 }} /> : null}
-            renderItem={({ item }) => {
-              const isSelected = selectedMovies.includes(item.id);
-              return (
-                <Pressable style={styles.movieCard} onPress={() => toggleItem(item.id, selectedMovies, setSelectedMovies)}>
-                  <ImageBackground source={{ uri: item.image }} style={styles.movieImage} imageStyle={{ borderRadius: 8, opacity: isSelected ? 0.4 : 1 }}>
-                    {isSelected && (
-                      <View style={styles.movieSelectedOverlay}>
-                        <Feather name="check-circle" size={32} color="#FF5A36" />
-                      </View>
-                    )}
-                    <View style={styles.movieTitleOverlay}>
-                      <Text style={styles.movieTitleText} numberOfLines={1}>{item.title}</Text>
-                    </View>
-                  </ImageBackground>
-                </Pressable>
-              );
-            }}
-          />
+            {step === 3 && (
+              <FlatList
+                data={movies}
+                keyExtractor={(item, index) => `${item.id}-${index}`}
+                numColumns={3}
+                columnWrapperStyle={styles.movieRow}
+                contentContainerStyle={styles.flatListContent}
+                showsVerticalScrollIndicator={false}
+                onEndReached={handleLoadMore}
+                onEndReachedThreshold={0.5}
+                ListFooterComponent={isLoadingMore ? <ActivityIndicator size="small" color="#FF5A36" style={{ marginVertical: 20 }} /> : null}
+                renderItem={({ item }) => {
+                  const isSelected = selectedMovies.includes(item.id);
+                  return (
+                    <Pressable style={styles.movieCard} onPress={() => toggleItem(item.id, selectedMovies, setSelectedMovies)}>
+                      <ImageBackground source={{ uri: item.image }} style={styles.movieImage} imageStyle={{ borderRadius: 8, opacity: isSelected ? 0.4 : 1 }}>
+                        {isSelected && (
+                          <View style={styles.movieSelectedOverlay}>
+                            <Feather name="check-circle" size={32} color="#FF5A36" />
+                          </View>
+                        )}
+                        <View style={styles.movieTitleOverlay}>
+                          <Text style={styles.movieTitleText} numberOfLines={1}>{item.title}</Text>
+                        </View>
+                      </ImageBackground>
+                    </Pressable>
+                  );
+                }}
+              />
+            )}
+          </>
         )}
       </View>
 
       <View style={styles.footer}>
-        <Pressable style={[styles.nextButton, isSubmitting && { opacity: 0.7 }]} onPress={handleNext} disabled={isSubmitting}>
+        <Pressable 
+          style={[styles.nextButton, (isSubmitting || isFetchingMovies) && { opacity: 0.7 }]} 
+          onPress={handleNext} 
+          disabled={isSubmitting || isFetchingMovies}
+        >
           {isSubmitting ? (
             <ActivityIndicator color="#111" />
           ) : (
@@ -234,7 +268,13 @@ const styles = StyleSheet.create({
   scrollContent: { paddingHorizontal: 20, paddingBottom: 100 },
   flatListContent: { paddingHorizontal: 15, paddingBottom: 100 },
   header: { paddingHorizontal: 20, marginTop: 60, marginBottom: 20 },
-  stepText: { color: '#FF5A36', fontSize: 14, fontWeight: 'bold', marginBottom: 10, letterSpacing: 1 },
+  
+  // ✅ 헤더 및 이전 버튼 스타일 추가
+  stepHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  stepText: { color: '#FF5A36', fontSize: 14, fontWeight: 'bold', letterSpacing: 1 },
+  prevButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20, borderWidth: 1, borderColor: '#333' },
+  prevButtonText: { color: '#aaa', fontSize: 12, marginLeft: 4, fontWeight: '600' },
+  
   title: { color: '#fff', fontSize: 26, fontWeight: 'bold', lineHeight: 36, marginBottom: 20 },
   progressBarContainer: { height: 4, borderRadius: 2, backgroundColor: '#333', overflow: 'hidden' },
   progressBarFill: { height: '100%', backgroundColor: '#FF5A36' },
@@ -252,5 +292,7 @@ const styles = StyleSheet.create({
   movieSelectedOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 8 },
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 40, backgroundColor: '#0a0a0a', borderTopWidth: 1, borderTopColor: '#1a1a1a' },
   nextButton: { backgroundColor: '#FF5A36', paddingVertical: 18, borderRadius: 30, alignItems: 'center' },
-  nextButtonText: { color: '#111', fontSize: 16, fontWeight: 'bold' }
+  nextButtonText: { color: '#111', fontSize: 16, fontWeight: 'bold' },
+  loadingArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  loadingText: { color: '#fff', marginTop: 15, fontSize: 14, fontWeight: '600' }
 });

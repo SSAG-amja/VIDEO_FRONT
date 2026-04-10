@@ -21,7 +21,7 @@ export default function SigninScreen() {
       
       // 온보딩 완료 여부에 따라 화면 이동 분기
       if (data.is_onboarding_completed) {
-        router.replace('/main'); // 메인 화면 경로에 맞게 수정하세요
+        router.replace('/(tabs)');
       } else {
         router.replace('/onboarding');
       }
