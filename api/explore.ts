@@ -31,10 +31,10 @@ export const fetchSearchData = async (query: string) => {
  * 백엔드 경로: /api/v1/explore/recommend
  */
 
-export const fetchRecommendData = async (tag: string) => {
+export const fetchRecommendData = async (tag: string, page: number = 1) => {
   try {
     const response = await client.get('/api/v1/explore/recommend', {
-      params: { tag },
+      params: { tag, page },
     });
     return response.data.movies || [];
   } catch (error) {
