@@ -24,3 +24,8 @@ export const signupApi = async (email: string, password: string, password_check:
   });
   return response.data;
 };
+
+export const signoutApi = async () => {
+  const response = await client.post('/api/v1/auth/signout');
+  return response.data;
+};
