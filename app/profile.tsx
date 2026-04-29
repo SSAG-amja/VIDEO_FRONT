@@ -1,22 +1,28 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
-import { router } from 'expo-router'; // ✅ Expo Router 전용 네비게이션
-
-// ✅ 스크린샷 경로에 맞춘 정확한 import
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch } from 'react-native';
+import { router } from 'expo-router'; 
 import { signoutApi } from '../api/auth'; 
 
 // --- Types ---
 interface MenuButtonProps {
   title: string;
-  iconName: string; 
+  iconName?: string; 
   onPress: () => void;
   isDestructive?: boolean;
 }
 
+interface MenuSwitchProps {
+  title: string;
+  value: boolean;
+  onValueChange: (value: boolean) => void;
+}
+
 // --- Components ---
 export default function Profile() {
-  
-  // 1. [실제 연동] 로그아웃 로직
+  // 추천 설정 토글 상태 (true: 구독중인 것만, false: 모든 영화)
+  const [isSubscribedOnly, setIsSubscribedOnly] = useState(true);
+
+  // 1. 로그아웃 로직
   const handleLogout = () => {
     Alert.alert(
       "로그아웃",
@@ -28,13 +34,8 @@ export default function Profile() {
           style: "destructive",
           onPress: async () => {
             try {
-              // auth.ts에 정의한 로그아웃 API 호출
               await signoutApi();
-
-              // TODO: 토큰 삭제 로직 (필요 시)
-              
-              // ✅ Expo Router 방식: 로그인 화면으로 완전 이동 (뒤로 가기 불가)
-              // (auth) 폴더 안의 signin 페이지로 간다고 가정
+              // TODO: 토큰 삭제 로직
               router.replace('/(auth)/signin'); 
             } catch (error) {
               console.error('Logout Error:', error);
@@ -46,23 +47,55 @@ export default function Profile() {
     );
   };
 
-  // 2. [프로토타입] 화면 이동 라우팅
+  // 2. 회원탈퇴 로직 (틀)
+  const handleDeleteAccount = () => {
+    Alert.alert(
+      "회원 탈퇴",
+      "탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다. 정말 탈퇴하시겠습니까?",
+      [
+        { text: "취소", style: "cancel" },
+        { 
+          text: "탈퇴하기", 
+          style: "destructive",
+          onPress: () => {
+            // TODO: 회원탈퇴 API 호출 로직 추가
+            console.log("회원탈퇴 진행");
+          }
+        }
+      ]
+    );
+  };
+
+  // 화면 이동 라우팅
   const handleNavigation = (path: any) => {
-    // ✅ Expo Router 방식의 페이지 이동
     router.push(path);
   };
 
   // 공통 메뉴 버튼 컴포넌트
-  const MenuButton: React.FC<MenuButtonProps> = ({ title, iconName, onPress, isDestructive = false }) => (
+  const MenuButton: React.FC<MenuButtonProps> = ({ title, onPress, isDestructive = false }) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
       <View style={styles.menuContent}>
-        {/* 나중에 아이콘 추가 시 사용 */}
-        {/* <Icon name={iconName} size={20} color={isDestructive ? '#FF453A' : '#E5E5EA'} style={styles.menuIcon} /> */}
         <Text style={[styles.menuText, isDestructive && styles.destructiveText]}>
           {title}
         </Text>
       </View>
     </TouchableOpacity>
+  );
+
+  // 토글 전용 메뉴 컴포넌트
+  const MenuSwitch: React.FC<MenuSwitchProps> = ({ title, value, onValueChange }) => (
+    <View style={styles.menuItem}>
+      <View style={styles.menuContent}>
+        <Text style={styles.menuText}>{title}</Text>
+      </View>
+      <Switch
+        trackColor={{ false: '#3A3A3C', true: '#6366F1' }}
+        thumbColor={'#FFFFFF'}
+        ios_backgroundColor="#3A3A3C"
+        onValueChange={onValueChange}
+        value={value}
+      />
+    </View>
   );
 
   return (
@@ -76,41 +109,52 @@ export default function Profile() {
         <Text style={styles.userEmail}>kimhoddi@kangwon.ac.kr</Text>
       </View>
 
-      {/* 설정 메뉴 리스트 */}
+      {/* 1. 계정 설정 */}
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>계정 설정</Text>
         <View style={styles.card}>
-          {/* 하위 페이지 생성 후 라우팅 경로를 알맞게 수정하세요 */}
           <MenuButton 
             title="개인정보 수정" 
-            iconName="user" 
-            onPress={() => handleNavigation('/edit-profile')} 
-          />
-          <MenuButton 
-            title="비밀번호 변경" 
-            iconName="lock" 
-            onPress={() => handleNavigation('/change-password')} 
+            onPress={() => handleNavigation('/editprofile')} 
           />
         </View>
       </View>
 
+      {/* 2. 서비스 설정 */}
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>서비스 설정</Text>
         <View style={styles.card}>
+          <MenuSwitch
+            title="구독 중인 OTT만 추천받기"
+            value={isSubscribedOnly}
+            onValueChange={setIsSubscribedOnly}
+          />
           <MenuButton 
-            title="온보딩 정보 (취향) 수정" 
-            iconName="sliders" 
+            title="구독 중인 OTT 목록 수정" 
+            onPress={() => handleNavigation('/editott')} 
+          />
+          <MenuButton 
+            title="취향 분석 다시하기" 
             onPress={() => handleNavigation('/onboarding')} 
+          />
+          {/* 💡 새롭게 추가된 숨긴 영화 보기 버튼 */}
+          <MenuButton 
+            title="숨긴 영화 보기" 
+            onPress={() => handleNavigation('/passedmovies')} 
           />
         </View>
       </View>
 
+      {/* 3. 위험 구간 (로그아웃 / 탈퇴) */}
       <View style={styles.sectionContainer}>
         <View style={styles.card}>
           <MenuButton 
             title="로그아웃" 
-            iconName="log-out" 
             onPress={handleLogout} 
+          />
+          <MenuButton 
+            title="회원 탈퇴" 
+            onPress={handleDeleteAccount} 
             isDestructive={true} 
           />
         </View>
