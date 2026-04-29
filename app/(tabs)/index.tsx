@@ -15,17 +15,17 @@ import {
   StyleSheet,
   Text,
   View,
+  Alert,
 } from "react-native";
 import { WebView } from "react-native-webview";
 import { API_BASE_URL } from "../../constants/api";
 import { usePinStore } from "../../store/usePinStore";
+import { usePassedStore } from "../../store/usePassedStore"; 
 
-// 화면 크기 및 비디오 비율 등 UI 계산을 위한 상수
 const { width: WINDOW_WIDTH } = Dimensions.get("window");
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16);
 const SWIPE_CUE_THRESHOLD = WINDOW_WIDTH * 0.25;
 
-// 영화 데이터 타입 정의
 interface Movie {
   id: number;
   title: string;
@@ -38,7 +38,6 @@ interface Movie {
   tags: string[];
 }
 
-// 숏폼 아이템 컴포넌트 속성 타입 정의
 interface ShortsItemProps {
   movie: Movie;
   isActive: boolean;
@@ -50,7 +49,6 @@ interface ShortsItemProps {
   setScrollEnabled: (enabled: boolean) => void;
 }
 
-// 개별 숏폼 영상 아이템 컴포넌트
 const ShortsItem = ({
   movie,
   isActive,
@@ -64,8 +62,6 @@ const ShortsItem = ({
   const blurAnim = useRef(new Animated.Value(0)).current;
   const webviewRef = useRef<WebView>(null);
   const [isReady, setIsReady] = useState(false);
-
-  // 재생 속도 상태 관리 (기본 1배속)
   const [playbackRate, setPlaybackRate] = useState<number>(1);
 
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
@@ -75,7 +71,16 @@ const ShortsItem = ({
   const pan = useRef(new Animated.ValueXY()).current;
   const manualPinAnim = useRef(new Animated.Value(0)).current;
 
-  // 1배 -> 1.5배 -> 2배 -> 1배 순환 로직
+  // 💡 [핵심 해결] PanResponder 안에서도 항상 최신 상태를 참조할 수 있도록 Ref 생성
+  const onPassRef = useRef(onPass);
+  const setScrollEnabledRef = useRef(setScrollEnabled);
+  const confirmAndPassRef = useRef<() => void>(() => {}); 
+
+  useEffect(() => {
+    onPassRef.current = onPass;
+    setScrollEnabledRef.current = setScrollEnabled;
+  }, [onPass, setScrollEnabled]);
+
   const toggleSpeed = () => {
     let nextRate = 1;
     if (playbackRate === 1) nextRate = 1.5;
@@ -99,59 +104,100 @@ const ShortsItem = ({
     });
   };
 
+  const proceedWithPass = () => {
+    Animated.timing(pan, {
+      toValue: { x: -WINDOW_WIDTH, y: 0 },
+      duration: 200,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (finished) {
+        onPassRef.current(); 
+        pan.setValue({ x: 0, y: 0 });
+        setScrollEnabledRef.current(true);
+      }
+    });
+  };
+
+  // 현재 상태(isPinned)를 바탕으로 작동하는 함수
+  const confirmAndPass = () => {
+    if (isPinned) {
+      Alert.alert(
+        "Pin된 영화",
+        "보관함에 Pin한 영화입니다.\n정말로 넘기시겠습니까?",
+        [
+          {
+            text: "취소",
+            style: "cancel",
+            onPress: () => {
+              Animated.spring(pan, {
+                toValue: { x: 0, y: 0 },
+                useNativeDriver: false,
+              }).start();
+              setScrollEnabledRef.current(true);
+            },
+          },
+          {
+            text: "넘기기",
+            style: "destructive",
+            onPress: () => proceedWithPass(),
+          },
+        ]
+      );
+    } else {
+      proceedWithPass();
+    }
+  };
+
+  // 💡 [핵심 해결] isPinned 상태가 바뀔 때마다 실행할 함수를 최신화
+  useEffect(() => {
+    confirmAndPassRef.current = confirmAndPass;
+  }, [isPinned]); 
+
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponderCapture: (_, gestureState) => {
         const isHorizontalSwipe = Math.abs(gestureState.dx) > 10;
-        const isDirectionClear =
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
+        const isDirectionClear = Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
         return isHorizontalSwipe && isDirectionClear;
       },
       onMoveShouldSetPanResponder: (_, gestureState) => {
         const isHorizontalSwipe = Math.abs(gestureState.dx) > 10;
-        const isDirectionClear =
-          Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
+        const isDirectionClear = Math.abs(gestureState.dx) > Math.abs(gestureState.dy) * 2;
         return isHorizontalSwipe && isDirectionClear;
       },
       onPanResponderGrant: () => {
-        // 제스처 시작 시 부모 스크롤 잠금 (iOS 화면 튀는 현상 방지)
-        setScrollEnabled(false);
+        setScrollEnabledRef.current(false);
       },
       onPanResponderMove: Animated.event([null, { dx: pan.x }], {
         useNativeDriver: false,
       }),
       onPanResponderRelease: (_, gestureState) => {
-        // 제스처 종료 시 부모 스크롤 해제
-        setScrollEnabled(true);
-        
         const swipeThreshold = 120;
-        if (gestureState.dx > swipeThreshold) {
-          // 오른쪽 스와이프(Pin): 다음 영상으로 안 넘어가고 제자리 복귀
+        const velocityThreshold = 1.2;
+
+        const isSwipeRight = gestureState.dx > swipeThreshold || gestureState.vx > velocityThreshold;
+        const isSwipeLeft = gestureState.dx < -swipeThreshold || gestureState.vx < -velocityThreshold;
+
+        if (isSwipeRight) {
           Animated.spring(pan, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: false,
           }).start();
           handlePinAction();
-        } else if (gestureState.dx < -swipeThreshold) {
-          // 왼쪽 스와이프(Pass): 다음 영상으로 넘어감
-          Animated.timing(pan, {
-            toValue: { x: -WINDOW_WIDTH, y: 0 },
-            duration: 200,
-            useNativeDriver: false,
-          }).start(() => {
-            onPass();
-            pan.setValue({ x: 0, y: 0 });
-          });
+          setScrollEnabledRef.current(true);
+        } else if (isSwipeLeft) {
+          // 💡 스와이프 시 갇혀있던 과거 상태가 아닌, 항상 최신의 Ref 함수 실행
+          confirmAndPassRef.current();
         } else {
-          // 임계치 미달 시 제자리 복귀
           Animated.spring(pan, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: false,
           }).start();
+          setScrollEnabledRef.current(true);
         }
       },
       onPanResponderTerminate: () => {
-        setScrollEnabled(true);
+        setScrollEnabledRef.current(true);
         Animated.spring(pan, {
           toValue: { x: 0, y: 0 },
           useNativeDriver: false,
@@ -162,19 +208,10 @@ const ShortsItem = ({
     }),
   ).current;
 
-  // X 버튼
   const triggerPass = () => {
-    Animated.timing(pan, {
-      toValue: { x: -WINDOW_WIDTH, y: 0 },
-      duration: 250,
-      useNativeDriver: false,
-    }).start(() => {
-      onPass();
-      pan.setValue({ x: 0, y: 0 });
-    });
+    confirmAndPass();
   };
 
-  // 하트 버튼 (다음 영상으로 안 넘어감)
   const triggerPin = () => {
     handlePinAction();
     Animated.sequence([
@@ -250,7 +287,6 @@ const ShortsItem = ({
         duration: 300,
         useNativeDriver: true,
       }).start();
-      // 화면에서 벗어나면 다음번 재생을 위해 1배속 초기화
       setPlaybackRate(1);
     }
   }, [isActive, isReady, isGlobalMuted, blurAnim, isScreenFocused]);
@@ -266,9 +302,7 @@ const ShortsItem = ({
 
   return (
     <View style={[styles.itemContainer, { height: layoutHeight }]}>
-      <View
-        style={[StyleSheet.absoluteFillObject, { backgroundColor: "#0a0a0a" }]}
-      />
+      <View style={[StyleSheet.absoluteFillObject, { backgroundColor: "#0a0a0a" }]} />
 
       <Animated.View
         {...panResponder.panHandlers}
@@ -287,28 +321,18 @@ const ShortsItem = ({
           style={[StyleSheet.absoluteFillObject, { opacity: blurAnim }]}
           pointerEvents="none"
         >
-          <BlurView
-            intensity={90}
-            tint="dark"
-            style={StyleSheet.absoluteFillObject}
-          />
+          <BlurView intensity={90} tint="dark" style={StyleSheet.absoluteFillObject} />
         </Animated.View>
 
-        {/* pointerEvents="none"으로 iOS 터치 충돌 완벽 방지 */}
         <View style={styles.videoWrapper} pointerEvents="none">
           <WebView
             ref={webviewRef}
             source={{ html: htmlContent, baseUrl: "https://localhost" }}
-            style={{
-              width: WINDOW_WIDTH,
-              height: VIDEO_HEIGHT,
-              backgroundColor: "transparent",
-            }}
+            style={{ width: WINDOW_WIDTH, height: VIDEO_HEIGHT, backgroundColor: "transparent" }}
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
             onMessage={(e) => {
-              if (JSON.parse(e.nativeEvent.data).type === "onReady")
-                setIsReady(true);
+              if (JSON.parse(e.nativeEvent.data).type === "onReady") setIsReady(true);
             }}
             scrollEnabled={false}
           />
@@ -330,41 +354,23 @@ const ShortsItem = ({
             style={styles.bottomGradient}
             pointerEvents="box-none"
           >
-            <Text style={styles.title} numberOfLines={2}>
-              {movie.title}
-            </Text>
-            <Text style={styles.subtitle}>
-              {movie.overview?.slice(0, 30)}...
-            </Text>
+            <Text style={styles.title} numberOfLines={2}>{movie.title}</Text>
+            <Text style={styles.subtitle}>{movie.overview?.slice(0, 30)}...</Text>
 
             <View style={styles.infoRow}>
               <FontAwesome name="star" size={14} color="#FFD700" />
               <Text style={styles.infoTextBold}>{movie.rating}</Text>
-              <Ionicons
-                name="time-outline"
-                size={14}
-                color="#aaa"
-                style={{ marginLeft: 10 }}
-              />
+              <Ionicons name="time-outline" size={14} color="#aaa" style={{ marginLeft: 10 }} />
               <Text style={styles.infoText}>{movie.runtime}분</Text>
 
-              {/* 음소거 버튼과 배속 버튼을 가로로 묶음 */}
               <View style={styles.badgeGroup}>
-                <Pressable
-                  onPress={() => setIsGlobalMuted(!isGlobalMuted)}
-                  style={styles.actionBadgeContainer}
-                >
+                <Pressable onPress={() => setIsGlobalMuted(!isGlobalMuted)} style={styles.actionBadgeContainer}>
                   <Ionicons
                     name={isGlobalMuted ? "volume-mute" : "volume-high"}
                     size={16}
                     color={isGlobalMuted ? "#aaa" : "#FF5A36"}
                   />
-                  <Text
-                    style={[
-                      styles.infoText,
-                      !isGlobalMuted && { color: "#FF5A36", fontWeight: "bold" },
-                    ]}
-                  >
+                  <Text style={[styles.infoText, !isGlobalMuted && { color: "#FF5A36", fontWeight: "bold" }]}>
                     {isGlobalMuted ? "소리 꺼짐" : "소리 켜짐"}
                   </Text>
                 </Pressable>
@@ -379,12 +385,10 @@ const ShortsItem = ({
             </View>
 
             <Pressable
-              onPress={() =>
-                router.push({
-                  pathname: "/detail/[id]",
-                  params: { id: movie.id, movieData: JSON.stringify(movie) },
-                } as any)
-              }
+              onPress={() => router.push({
+                pathname: "/detail/[id]",
+                params: { id: movie.id, movieData: JSON.stringify(movie) },
+              } as any)}
               style={styles.detailPrompt}
             >
               <Ionicons name="chevron-up" size={20} color="#666" />
@@ -396,10 +400,7 @@ const ShortsItem = ({
                 onPress={triggerPass}
                 style={({ pressed }) => [
                   styles.actionButton,
-                  pressed && {
-                    transform: [{ scale: 0.85 }],
-                    backgroundColor: "rgba(255, 90, 54, 0.2)",
-                  },
+                  pressed && { transform: [{ scale: 0.85 }], backgroundColor: "rgba(255, 90, 54, 0.2)" },
                 ]}
               >
                 <Ionicons name="close" size={32} color="#FF5A36" />
@@ -411,51 +412,24 @@ const ShortsItem = ({
                   styles.actionButton,
                   styles.pinButton,
                   isPinned && { backgroundColor: "rgba(255, 90, 54, 0.1)" },
-                  pressed && {
-                    transform: [{ scale: 0.85 }],
-                    backgroundColor: "rgba(255, 90, 54, 0.2)",
-                  },
+                  pressed && { transform: [{ scale: 0.85 }], backgroundColor: "rgba(255, 90, 54, 0.2)" },
                 ]}
               >
-                <Ionicons
-                  name={isPinned ? "heart" : "heart-outline"}
-                  size={32}
-                  color="#FF5A36"
-                />
+                <Ionicons name={isPinned ? "heart" : "heart-outline"} size={32} color="#FF5A36" />
               </Pressable>
             </View>
           </LinearGradient>
         </View>
       </Animated.View>
 
-      <View
-        style={[StyleSheet.absoluteFillObject, styles.centralPopupOverlay]}
-        pointerEvents="none"
-      >
-        <Animated.View
-          style={[
-            styles.popupIconCircle,
-            { opacity: likeCueOpacity, transform: [{ scale: cueScale }] },
-          ]}
-        >
+      <View style={[StyleSheet.absoluteFillObject, styles.centralPopupOverlay]} pointerEvents="none">
+        <Animated.View style={[styles.popupIconCircle, { opacity: likeCueOpacity, transform: [{ scale: cueScale }] }]}>
           <Ionicons name="heart" size={70} color="#FF5A36" />
         </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.popupIconCircle,
-            { opacity: manualPinAnim, transform: [{ scale: manualPinScale }] },
-          ]}
-        >
+        <Animated.View style={[styles.popupIconCircle, { opacity: manualPinAnim, transform: [{ scale: manualPinScale }] }]}>
           <Ionicons name="heart" size={70} color="#FF5A36" />
         </Animated.View>
-
-        <Animated.View
-          style={[
-            styles.popupIconCircle,
-            { opacity: dislikeCueOpacity, transform: [{ scale: cueScale }] },
-          ]}
-        >
+        <Animated.View style={[styles.popupIconCircle, { opacity: dislikeCueOpacity, transform: [{ scale: cueScale }] }]}>
           <Ionicons name="close" size={70} color="#FF5A36" />
         </Animated.View>
       </View>
@@ -463,7 +437,6 @@ const ShortsItem = ({
   );
 };
 
-// 홈 피드 메인 화면 컴포넌트
 export default function HomeFeedScreen() {
   const [movies, setMovies] = useState<Movie[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
@@ -473,19 +446,16 @@ export default function HomeFeedScreen() {
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [isGlobalMuted, setIsGlobalMuted] = useState<boolean>(true);
   const [isScreenFocused, setIsScreenFocused] = useState<boolean>(true);
-  
-  // FlatList 스크롤 제어 (스와이프 시 잠금용)
   const [isScrollEnabled, setIsScrollEnabled] = useState<boolean>(true);
 
+  const passMovie = usePassedStore((state) => state.passMovie);
   const flatListRef = useRef<FlatList>(null);
 
   useFocusEffect(
     useCallback(() => {
       let isActiveScreen = true;
       const timer = setTimeout(() => {
-        if (isActiveScreen) {
-          setIsScreenFocused(true);
-        }
+        if (isActiveScreen) setIsScreenFocused(true);
       }, 300);
 
       return () => {
@@ -503,14 +473,17 @@ export default function HomeFeedScreen() {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
-      const response = await fetch(
-        `${API_BASE_URL}/api/v1/movie_load/shorts?page=${pageNumber}`,
-      );
+      const response = await fetch(`${API_BASE_URL}/api/v1/movie_load/shorts?page=${pageNumber}`);
       const data = await response.json();
 
       if (data.movies && data.movies.length > 0) {
+        const passedList = usePassedStore.getState().passedMovies;
+        const filteredMovies = data.movies.filter(
+          (m: Movie) => !passedList.some((pm) => pm.id === m.id)
+        );
+
         setMovies((prevMovies) =>
-          pageNumber === 1 ? data.movies : [...prevMovies, ...data.movies],
+          pageNumber === 1 ? filteredMovies : [...prevMovies, ...filteredMovies],
         );
       }
     } catch (error) {
@@ -539,12 +512,19 @@ export default function HomeFeedScreen() {
     }
   }, []);
 
-  const handlePass = (currentIndex: number) => {
-    const nextIndex = currentIndex + 1;
-    if (nextIndex < movies.length) {
-      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
-    }
-  };
+  const handlePass = useCallback((id: number) => {
+    setMovies((prev) => {
+      const movieToPass = prev.find(m => m.id === id);
+      if (movieToPass) {
+        passMovie({
+          id: movieToPass.id,
+          title: movieToPass.title,
+          image: `https://image.tmdb.org/t/p/w500${movieToPass.posterPath}`,
+        });
+      }
+      return prev.filter((m) => m.id !== id);
+    });
+  }, [passMovie]);
 
   if (isLoading) {
     return (
@@ -556,10 +536,7 @@ export default function HomeFeedScreen() {
   }
 
   return (
-    <View
-      style={styles.container}
-      onLayout={(e) => setLayoutHeight(e.nativeEvent.layout.height)}
-    >
+    <View style={styles.container} onLayout={(e) => setLayoutHeight(e.nativeEvent.layout.height)}>
       {layoutHeight > 0 && (
         <FlatList
           ref={flatListRef}
@@ -574,31 +551,27 @@ export default function HomeFeedScreen() {
               layoutHeight={layoutHeight}
               isGlobalMuted={isGlobalMuted}
               setIsGlobalMuted={setIsGlobalMuted}
-              onPass={() => handlePass(index)}
+              onPass={() => handlePass(item.id)}
               setScrollEnabled={setIsScrollEnabled}
             />
           )}
-          keyExtractor={(item, index) => `${item.id}-${index}`}
+          keyExtractor={(item) => item.id.toString()}
           pagingEnabled
           showsVerticalScrollIndicator={false}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
           windowSize={3}
-          getItemLayout={(data, index) => ({
-            length: layoutHeight,
-            offset: layoutHeight * index,
-            index,
-          })}
+          getItemLayout={(data, index) => ({ length: layoutHeight, offset: layoutHeight * index, index })}
           onEndReached={loadMoreMovies}
           onEndReachedThreshold={0.5}
+          ListEmptyComponent={
+            <View style={styles.loadingContainer}>
+              <Text style={{ color: '#aaa', fontSize: 16 }}>모든 추천 영화를 확인했습니다.</Text>
+            </View>
+          }
           ListFooterComponent={
             isFetchingMore ? (
-              <View
-                style={[
-                  styles.itemContainer,
-                  { height: 100, backgroundColor: "#0a0a0a" },
-                ]}
-              >
+              <View style={[styles.itemContainer, { height: 100, backgroundColor: "#0a0a0a" }]}>
                 <ActivityIndicator size="small" color="#FF5A36" />
               </View>
             ) : null
@@ -609,118 +582,33 @@ export default function HomeFeedScreen() {
   );
 }
 
-// UI 스타일 정의
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#0a0a0a" },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#0a0a0a",
-  },
+  loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0a0a0a" },
   loadingText: { color: "#FF5A36", marginTop: 10, fontWeight: "bold" },
-  itemContainer: {
-    width: WINDOW_WIDTH,
-    backgroundColor: "black",
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  videoWrapper: {
-    width: WINDOW_WIDTH,
-    height: VIDEO_HEIGHT,
-    zIndex: 3,
-    backgroundColor: "transparent",
-  },
+  itemContainer: { width: WINDOW_WIDTH, backgroundColor: "black", justifyContent: "center", alignItems: "center" },
+  videoWrapper: { width: WINDOW_WIDTH, height: VIDEO_HEIGHT, zIndex: 3, backgroundColor: "transparent" },
   cardContainer: { justifyContent: "center", alignItems: "center" },
-  centralPopupOverlay: {
-    zIndex: 10,
-    justifyContent: "center",
-    alignItems: "center",
-  },
-  popupIconCircle: {
-    position: "absolute",
-    width: 140,
-    height: 140,
-    borderRadius: 70,
-    backgroundColor: "rgba(0,0,0,0.6)",
-    justifyContent: "center",
-    alignItems: "center",
-    elevation: 8,
-  },
+  centralPopupOverlay: { zIndex: 10, justifyContent: "center", alignItems: "center" },
+  popupIconCircle: { position: "absolute", width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", elevation: 8 },
   uiOverlay: { ...StyleSheet.absoluteFillObject, zIndex: 4 },
-
-  header: {
-    position: "absolute",
-    top: 50,
-    left: 20,
-    right: 20,
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-  },
+  header: { position: "absolute", top: 50, left: 20, right: 20, flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   logoText: { fontSize: 24, fontWeight: "bold", color: "#fff" },
   logoHighlight: { color: "#FF5A36" },
-  statusBadge: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "rgba(0,0,0,0.6)",
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 20,
-  },
-  statusDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: "#4CAF50",
-    marginRight: 6,
-  },
+  statusBadge: { flexDirection: "row", alignItems: "center", backgroundColor: "rgba(0,0,0,0.6)", paddingHorizontal: 12, paddingVertical: 6, borderRadius: 20 },
+  statusDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: "#4CAF50", marginRight: 6 },
   statusText: { color: "#fff", fontSize: 12, fontWeight: "bold" },
-
-  bottomGradient: {
-    position: "absolute",
-    bottom: 0,
-    left: 0,
-    right: 0,
-    paddingHorizontal: 20,
-    paddingBottom: 40,
-    paddingTop: 150,
-  },
+  bottomGradient: { position: "absolute", bottom: 0, left: 0, right: 0, paddingHorizontal: 20, paddingBottom: 40, paddingTop: 150 },
   title: { fontSize: 32, fontWeight: "bold", color: "#fff", marginBottom: 5 },
   subtitle: { fontSize: 14, color: "#ccc", marginBottom: 15 },
-
   infoRow: { flexDirection: "row", alignItems: "center", marginBottom: 20 },
   infoTextBold: { color: "#fff", fontWeight: "bold", marginLeft: 5 },
   infoText: { color: "#aaa", marginLeft: 5 },
-
-  badgeGroup: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginLeft: 15,
-    gap: 8,
-  },
-  actionBadgeContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    backgroundColor: "rgba(255,255,255,0.1)",
-    borderRadius: 12,
-    gap: 4, // 아이콘과 텍스트 사이 간격
-  },
-
+  badgeGroup: { flexDirection: "row", alignItems: "center", marginLeft: 15, gap: 8 },
+  actionBadgeContainer: { flexDirection: "row", alignItems: "center", paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 12, gap: 4 },
   detailPrompt: { alignItems: "center", marginBottom: 20 },
   detailPromptText: { color: "#666", fontSize: 12 },
   actionRow: { flexDirection: "row", justifyContent: "center", gap: 40 },
-  actionButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    borderWidth: 1,
-    borderColor: "#333",
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "center",
-    alignItems: "center",
-  },
+  actionButton: { width: 64, height: 64, borderRadius: 32, borderWidth: 1, borderColor: "#333", backgroundColor: "rgba(0,0,0,0.5)", justifyContent: "center", alignItems: "center" },
   pinButton: { borderColor: "#FF5A36" },
 });

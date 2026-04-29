@@ -1,13 +1,13 @@
-import { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, Alert, TextInput, Modal, Image } from 'react-native';
 import { router } from 'expo-router';
-import { Feather } from '@expo/vector-icons';
+import { Feather, Ionicons } from '@expo/vector-icons';
 import * as SecureStore from 'expo-secure-store';
 
-import { API_BASE_URL } from "../constants/api";
+// 💡 api 경로를 프로젝트 구조에 맞게 수정하세요 (예: ../api/explore 또는 ../../api/explore)
+import { fetchSearchData } from '../api/explore'; 
 
 // ✅ 1. .env 파일에서 안전하게 API 키 불러오기
-// 주의: .env 파일에 반드시 EXPO_PUBLIC_TMDB_API_KEY=키값 형태로 저장되어 있어야 합니다.
 const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 
 const OTTS = [
@@ -38,11 +38,58 @@ export default function OnboardingScreen() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);     
   const [isSubmitting, setIsSubmitting] = useState(false); 
 
+  // 🔍 모달 및 검색 관련 상태
+  const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<any[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+
+  // 🔍 검색 디바운스 로직
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setSearchResults([]);
+      return;
+    }
+    setIsSearching(true);
+    const delayDebounceFn = setTimeout(async () => {
+      try {
+        const results = await fetchSearchData(searchQuery);
+        setSearchResults(results);
+      } catch (error) {
+        console.error("검색 중 오류 발생:", error);
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
   const toggleItem = (itemId: number, selectedList: number[], setSelectedList: any) => {
     if (selectedList.includes(itemId)) {
       setSelectedList(selectedList.filter((id) => id !== itemId));
     } else {
       setSelectedList([...selectedList, itemId]);
+    }
+  };
+
+  // 🔍 검색된 영화 선택 처리 로직
+  const handleSelectSearchedMovie = (item: any) => {
+    const movieId = item.id;
+    const isAlreadySelected = selectedMovies.includes(movieId);
+
+    // 1. 선택 배열에 추가/제거
+    toggleItem(movieId, selectedMovies, setSelectedMovies);
+
+    // 2. 선택했다면 메인 그리드(movies) 화면 앞쪽에도 띄워주기 (시각적 피드백)
+    if (!isAlreadySelected) {
+      setMovies(prev => {
+        if (!prev.some(m => m.id === movieId)) {
+          const imageUrl = item.image || (item.posterPath ? `https://image.tmdb.org/t/p/w500${item.posterPath}` : 'https://via.placeholder.com/500x750?text=No+Image');
+          return [{ id: movieId, title: item.title, image: imageUrl }, ...prev];
+        }
+        return prev;
+      });
     }
   };
 
@@ -155,6 +202,23 @@ export default function OnboardingScreen() {
     }
   };
 
+  // 🔍 모달에서 보여줄 개별 검색 결과 컴포넌트
+  const renderSearchItem = ({ item }: { item: any }) => {
+    const isSelected = selectedMovies.includes(item.id);
+    const imageUrl = item.image || (item.posterPath ? `https://image.tmdb.org/t/p/w500${item.posterPath}` : 'https://via.placeholder.com/150');
+
+    return (
+      <Pressable 
+        style={[styles.searchItemWrapper, isSelected && styles.searchItemSelected]} 
+        onPress={() => handleSelectSearchedMovie(item)}
+      >
+        <Image source={{ uri: imageUrl }} style={styles.searchItemImage} />
+        <Text style={styles.searchItemTitle} numberOfLines={2}>{item.title}</Text>
+        {isSelected && <Ionicons name="checkmark-circle" size={24} color="#FF5A36" style={{ marginRight: 15 }} />}
+      </Pressable>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.header}>
@@ -214,34 +278,42 @@ export default function OnboardingScreen() {
             )}
 
             {step === 3 && (
-              <FlatList
-                data={movies}
-                keyExtractor={(item, index) => `${item.id}-${index}`}
-                numColumns={3}
-                columnWrapperStyle={styles.movieRow}
-                contentContainerStyle={styles.flatListContent}
-                showsVerticalScrollIndicator={false}
-                onEndReached={handleLoadMore}
-                onEndReachedThreshold={0.5}
-                ListFooterComponent={isLoadingMore ? <ActivityIndicator size="small" color="#FF5A36" style={{ marginVertical: 20 }} /> : null}
-                renderItem={({ item }) => {
-                  const isSelected = selectedMovies.includes(item.id);
-                  return (
-                    <Pressable style={styles.movieCard} onPress={() => toggleItem(item.id, selectedMovies, setSelectedMovies)}>
-                      <ImageBackground source={{ uri: item.image }} style={styles.movieImage} imageStyle={{ borderRadius: 8, opacity: isSelected ? 0.4 : 1 }}>
-                        {isSelected && (
-                          <View style={styles.movieSelectedOverlay}>
-                            <Feather name="check-circle" size={32} color="#FF5A36" />
+              <View style={{ flex: 1 }}>
+                {/* 🔍 영화 직접 검색 버튼 */}
+                <Pressable style={styles.searchTriggerButton} onPress={() => setIsSearchModalVisible(true)}>
+                  <Ionicons name="search" size={20} color="#aaa" />
+                  <Text style={styles.searchTriggerText}>찾으시는 영화가 없나요? 직접 검색해보세요</Text>
+                </Pressable>
+
+                <FlatList
+                  data={movies}
+                  keyExtractor={(item, index) => `${item.id}-${index}`}
+                  numColumns={3}
+                  columnWrapperStyle={styles.movieRow}
+                  contentContainerStyle={styles.flatListContent}
+                  showsVerticalScrollIndicator={false}
+                  onEndReached={handleLoadMore}
+                  onEndReachedThreshold={0.5}
+                  ListFooterComponent={isLoadingMore ? <ActivityIndicator size="small" color="#FF5A36" style={{ marginVertical: 20 }} /> : null}
+                  renderItem={({ item }) => {
+                    const isSelected = selectedMovies.includes(item.id);
+                    return (
+                      <Pressable style={styles.movieCard} onPress={() => toggleItem(item.id, selectedMovies, setSelectedMovies)}>
+                        <ImageBackground source={{ uri: item.image }} style={styles.movieImage} imageStyle={{ borderRadius: 8, opacity: isSelected ? 0.4 : 1 }}>
+                          {isSelected && (
+                            <View style={styles.movieSelectedOverlay}>
+                              <Feather name="check-circle" size={32} color="#FF5A36" />
+                            </View>
+                          )}
+                          <View style={styles.movieTitleOverlay}>
+                            <Text style={styles.movieTitleText} numberOfLines={1}>{item.title}</Text>
                           </View>
-                        )}
-                        <View style={styles.movieTitleOverlay}>
-                          <Text style={styles.movieTitleText} numberOfLines={1}>{item.title}</Text>
-                        </View>
-                      </ImageBackground>
-                    </Pressable>
-                  );
-                }}
-              />
+                        </ImageBackground>
+                      </Pressable>
+                    );
+                  }}
+                />
+              </View>
             )}
           </>
         )}
@@ -260,6 +332,44 @@ export default function OnboardingScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* 🔍 검색 모달 */}
+      <Modal visible={isSearchModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsSearchModalVisible(false)}>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalHeader}>
+            <Text style={styles.modalTitle}>영화 검색</Text>
+            <Pressable onPress={() => { setIsSearchModalVisible(false); setSearchQuery(''); }}>
+              <Ionicons name="close" size={28} color="#fff" />
+            </Pressable>
+          </View>
+
+          <View style={styles.searchInputContainer}>
+            <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
+            <TextInput style={styles.searchInput} placeholder="영화 제목 검색..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} autoFocus />
+            {searchQuery.length > 0 && (
+              <Pressable onPress={() => setSearchQuery('')}>
+                <Ionicons name="close-circle" size={20} color="#666" />
+              </Pressable>
+            )}
+          </View>
+
+          {isSearching ? (
+            <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
+          ) : searchResults.length > 0 ? (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item, index) => item.id ? item.id.toString() : index.toString()}
+              renderItem={renderSearchItem}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+              showsVerticalScrollIndicator={false}
+            />
+          ) : searchQuery.trim() !== '' ? (
+            <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
+          ) : (
+            <Text style={styles.noResultText}>추가하고 싶은 인생 영화를 검색해보세요.</Text>
+          )}
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -283,15 +393,34 @@ const styles = StyleSheet.create({
   checkIcon: { marginRight: 6 },
   genreText: { color: '#aaa', fontSize: 16 },
   genreTextSelected: { color: '#111', fontWeight: 'bold' },
+  
   movieRow: { gap: 10, marginBottom: 10 },
   movieCard: { flex: 1, aspectRatio: 2/3, maxWidth: '32%' }, 
   movieImage: { flex: 1, justifyContent: 'flex-end' },
   movieTitleOverlay: { backgroundColor: 'rgba(0,0,0,0.7)', padding: 6, borderBottomLeftRadius: 8, borderBottomRightRadius: 8 },
   movieTitleText: { color: '#fff', fontSize: 11, fontWeight: 'bold', textAlign: 'center' },
   movieSelectedOverlay: { ...StyleSheet.absoluteFillObject, justifyContent: 'center', alignItems: 'center', backgroundColor: 'rgba(0,0,0,0.3)', borderRadius: 8 },
+  
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 40, backgroundColor: '#0a0a0a', borderTopWidth: 1, borderTopColor: '#1a1a1a' },
   nextButton: { backgroundColor: '#FF5A36', paddingVertical: 18, borderRadius: 30, alignItems: 'center' },
   nextButtonText: { color: '#111', fontSize: 16, fontWeight: 'bold' },
   loadingArea: { flex: 1, justifyContent: 'center', alignItems: 'center' },
-  loadingText: { color: '#fff', marginTop: 15, fontSize: 14, fontWeight: '600' }
+  loadingText: { color: '#fff', marginTop: 15, fontSize: 14, fontWeight: '600' },
+
+  // 🔍 검색 버튼 및 모달 스타일
+  searchTriggerButton: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', marginHorizontal: 15, marginBottom: 15, padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#333' },
+  searchTriggerText: { color: '#aaa', fontSize: 14, marginLeft: 10 },
+  
+  modalContainer: { flex: 1, backgroundColor: '#111', paddingTop: 20 },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },
+  modalTitle: { color: '#fff', fontSize: 20, fontWeight: 'bold' },
+  searchInputContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#222', borderRadius: 12, marginHorizontal: 20, paddingHorizontal: 15, height: 50, marginBottom: 20, borderWidth: 1, borderColor: '#333' },
+  searchIcon: { marginRight: 10 },
+  searchInput: { flex: 1, color: '#fff', fontSize: 16 },
+  noResultText: { color: '#666', textAlign: 'center', marginTop: 50, fontSize: 16 },
+  
+  searchItemWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, backgroundColor: '#1a1a1a', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: 'transparent' },
+  searchItemSelected: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.1)' },
+  searchItemImage: { width: 50, height: 75, borderRadius: 8, backgroundColor: '#333' },
+  searchItemTitle: { flex: 1, color: '#fff', fontSize: 15, fontWeight: 'bold', marginLeft: 15 },
 });
