@@ -7,18 +7,27 @@ import {
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import YoutubePlayer from 'react-native-youtube-iframe'; 
+
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePinStore } from '../../store/usePinStore';
 import { fetchMovieDetailData } from '../../api/movies'; 
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-const DUMMY_OTTS = [
-  { id: 'netflix', name: '넷플릭스', color: '#E50914', scheme: 'nflx://' },
-  { id: 'watcha', name: '왓챠', color: '#FF0558', scheme: 'watcha://' },
-  { id: 'tving', name: '티빙', color: '#FF153C', scheme: 'tving://' },
-  { id: 'disney', name: '디즈니+', color: '#113CCF', scheme: 'disneyplus://' },
-];
+const OTT_SCHEME_MAP: Record<number, { scheme: string, name: string, customLocalLogo?: any }> = {
+  8: { scheme: 'nflx://', name: '넷플릭스' }, 
+  97: { 
+    scheme: 'watcha://', 
+    name: '왓챠', 
+    customLocalLogo: require('../../assets/images/watcha-icon.png') 
+  }, 
+  96: { scheme: 'tving://', name: '티빙' }, 
+  337: { scheme: 'disneyplus://', name: '디즈니+' }, 
+  356: { scheme: 'wavve://', name: '웨이브' }, 
+  538: { scheme: 'coupangplay://', name: '쿠팡플레이' },
+  350: { scheme: 'appletv://', name: 'Apple TV+' }
+};
 
 export default function DetailScreen() {
   const { movieData } = useLocalSearchParams();
@@ -52,18 +61,27 @@ export default function DetailScreen() {
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
 
-  // Pin 스토어 연결
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
   const togglePin = usePinStore((state) => state.togglePin);
   const isPinned = movieDetail ? pinnedMovies.some((m) => m.id === movieDetail.id) : false;
 
-  // 재생목록 스토어 연결
   const [isPlaylistModalVisible, setPlaylistModalVisible] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
-  const [isNewPlaylistPublic, setIsNewPlaylistPublic] = useState(false); // ✅ 공개 여부 상태 추가
+  const [isNewPlaylistPublic, setIsNewPlaylistPublic] = useState(false); 
   
   const { customPlaylists, createPlaylist, addMovieToPlaylist } = usePlaylistStore();
+
+  // 💡 커뮤니티 글 작성 관련 상태 관리 추가
+  const [isWriteModalVisible, setIsWriteModalVisible] = useState(false);
+  const [postContent, setPostContent] = useState('');
+  const [postTags, setPostTags] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
+
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 2000);
+  };
 
   const closeModal = () => {
     Animated.timing(translateY, {
@@ -100,7 +118,6 @@ export default function DetailScreen() {
     const trimmedName = newPlaylistName.trim();
     if (trimmedName.length === 0) return;
 
-    // ✅ 공개 여부 반영하여 생성
     createPlaylist(trimmedName, isNewPlaylistPublic);
     
     const updatedPlaylists = usePlaylistStore.getState().customPlaylists;
@@ -115,17 +132,38 @@ export default function DetailScreen() {
     setIsCreatingNew(false);
   };
 
-  const handleOpenOtt = async (ott: typeof DUMMY_OTTS[0]) => {
+  const handleOpenOtt = async (providerId: number) => {
+    const mappedOtt = OTT_SCHEME_MAP[providerId];
+    
+    if (!mappedOtt) {
+      Alert.alert('알림', '해당 OTT의 앱 바로가기를 아직 지원하지 않습니다.');
+      return;
+    }
+
     try {
-      const supported = await Linking.canOpenURL(ott.scheme);
+      const supported = await Linking.canOpenURL(mappedOtt.scheme);
       if (supported) {
-        await Linking.openURL(ott.scheme);
+        await Linking.openURL(mappedOtt.scheme);
       } else {
-        Alert.alert(`${ott.name} 앱 실행`, `기기에 ${ott.name} 앱이 설치되어 있지 않습니다.`);
+        Alert.alert(`${mappedOtt.name} 앱 실행`, `기기에 ${mappedOtt.name} 앱이 설치되어 있지 않습니다.`);
       }
     } catch (error) {
       Alert.alert('실행 오류', '앱을 열 수 없습니다.');
     }
+  };
+
+  // 💡 게시글 등록 함수
+  const handleSubmitPost = () => {
+    if (!postContent.trim()) return showToast("내용을 입력해주세요.");
+    
+    // TODO: 백엔드 API 연동 위치 (현재 movieDetail.id 와 내용 전송)
+    
+    showToast("게시글이 등록되었습니다.");
+    setTimeout(() => {
+      setIsWriteModalVisible(false);
+      setPostContent('');
+      setPostTags('');
+    }, 1000);
   };
 
   if (!movieDetail) {
@@ -156,7 +194,13 @@ export default function DetailScreen() {
           <View style={styles.contentBody}>
             <View style={styles.handleBarAlign}><View style={styles.handleBar} /></View>
             <Text style={styles.title}>{movieDetail.title}</Text>
-            <Text style={styles.infoText}>{movieDetail.info}</Text>
+            
+            <View style={styles.infoContainer}>
+              <Ionicons name="star" size={15} color="#FFD700" style={styles.starIcon} />
+              <Text style={styles.infoText}>
+                {(movieDetail.rating || 0).toFixed(1)} | {movieDetail.info}
+              </Text>
+            </View>
 
             <View style={styles.tagRow}>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
@@ -165,6 +209,22 @@ export default function DetailScreen() {
                 ))}
               </ScrollView>
             </View>
+
+            {movieDetail.youtubeId && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>공식 예고편</Text>
+                <View style={styles.videoContainer}>
+                  <YoutubePlayer
+                    height={210}
+                    play={false}
+                    videoId={movieDetail.youtubeId}
+                    webViewProps={{
+                      androidLayerType: 'hardware', 
+                    }}
+                  />
+                </View>
+              </View>
+            )}
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>시놉시스</Text>
@@ -191,22 +251,48 @@ export default function DetailScreen() {
 
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>바로 시청하기</Text>
-              <View style={styles.ottList}>
-                {DUMMY_OTTS.map((ott) => (
-                  <Pressable key={ott.id} style={[styles.ottItem, { borderColor: ott.color }]} onPress={() => handleOpenOtt(ott)}>
-                    <Text style={[styles.ottName, { color: ott.color }]}>{ott.name}</Text>
-                    <Ionicons name="play-circle" size={24} color={ott.color} />
-                  </Pressable>
-                ))}
-              </View>
+              {movieDetail.providers && movieDetail.providers.length > 0 ? (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ottScrollContainer}>
+                  {movieDetail.providers.map((provider: any) => {
+                    const mappedOtt = OTT_SCHEME_MAP[provider.provider_id];
+                    
+                    const imageSource = mappedOtt?.customLocalLogo
+                      ? mappedOtt.customLocalLogo
+                      : { uri: `https://image.tmdb.org/t/p/w154${provider.logo_path}` };
+
+                    return (
+                      <Pressable 
+                        key={provider.provider_id} 
+                        style={styles.ottIconWrapper} 
+                        onPress={() => handleOpenOtt(provider.provider_id)}
+                      >
+                        <Image 
+                          source={imageSource} 
+                          style={styles.ottIconImage} 
+                          resizeMode="cover"
+                        />
+                      </Pressable>
+                    );
+                  })}
+                </ScrollView>
+              ) : (
+                <Text style={styles.emptyOttText}>현재 스트리밍 가능한 OTT 정보가 없습니다.</Text>
+              )}
             </View>
+
           </View>
           <View style={{ height: 120 }} />
         </ScrollView>
 
         <View style={styles.footer}>
-          <Pressable style={styles.playlistIconBtn} onPress={() => setPlaylistModalVisible(true)}>
+          {/* 💡 재생목록 추가 버튼 */}
+          <Pressable style={styles.circleIconBtn} onPress={() => setPlaylistModalVisible(true)}>
             <Ionicons name="folder-open-outline" size={26} color="#fff" />
+          </Pressable>
+
+          {/* 💡 커뮤니티 글 작성 버튼 */}
+          <Pressable style={styles.circleIconBtn} onPress={() => setIsWriteModalVisible(true)}>
+            <Ionicons name="pencil" size={24} color="#fff" />
           </Pressable>
           
           <Pressable 
@@ -224,7 +310,68 @@ export default function DetailScreen() {
           </Pressable>
         </View>
 
-        {/* 재생목록 모달 */}
+        {/* --- 💡 글쓰기 모달 --- */}
+        <Modal visible={isWriteModalVisible} animationType="slide" presentationStyle="pageSheet">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.writeModalContainer}>
+            <View style={styles.writeModalHeader}>
+              <Pressable onPress={() => setIsWriteModalVisible(false)}>
+                <Text style={styles.modalCancelText}>취소</Text>
+              </Pressable>
+              <Text style={styles.writeModalTitle}>새 게시글</Text>
+              <Pressable onPress={handleSubmitPost}>
+                <Text style={styles.modalSubmitText}>등록</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.writeModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              
+              {/* 이미 태그된 콘텐츠 정보 표시 */}
+              <View style={styles.selectedMovieBox}>
+                <Image source={{ uri: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}` }} style={styles.selectedMovieImage} />
+                <View style={styles.selectedMovieInfo}>
+                  <Text style={styles.selectedMovieTitle}>{movieDetail.title}</Text>
+                  <Text style={styles.selectedMovieLabel}>영화 태그됨</Text>
+                </View>
+              </View>
+
+              {/* 본문 입력창 */}
+              <View style={styles.inputSection}>
+                <TextInput
+                  style={styles.contentInput}
+                  placeholder="이 콘텐츠에 대한 생각을 자유롭게 남겨주세요."
+                  placeholderTextColor="#666"
+                  multiline
+                  maxLength={500}
+                  value={postContent}
+                  onChangeText={setPostContent}
+                  autoFocus
+                />
+              </View>
+
+              {/* 해시태그 입력창 */}
+              <View style={styles.inputSection}>
+                <View style={styles.tagInputWrapper}>
+                  <Ionicons name="pricetag-outline" size={18} color="#666" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.tagInput}
+                    placeholder="해시태그 띄어쓰기로 구분 (예: #스릴러 #명작)"
+                    placeholderTextColor="#666"
+                    value={postTags}
+                    onChangeText={setPostTags}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            {toastMessage !== '' && (
+              <View style={styles.toastContainer}>
+                <Text style={styles.toastText}>{toastMessage}</Text>
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        </Modal>
+
+        {/* 기존 재생목록 모달 */}
         <Modal 
           visible={isPlaylistModalVisible} 
           transparent={true} 
@@ -274,7 +421,6 @@ export default function DetailScreen() {
                       returnKeyType="done"
                     />
 
-                    {/* ✅ 공개/비공개 선택 영역 */}
                     <View style={styles.privacySelector}>
                       <Pressable 
                         style={[styles.privacyOption, !isNewPlaylistPublic && styles.privacyOptionActive]} 
@@ -307,7 +453,6 @@ export default function DetailScreen() {
             </Pressable>
           </KeyboardAvoidingView>
         </Modal>
-
       </Animated.View>
     </View>
   );
@@ -325,12 +470,18 @@ const styles = StyleSheet.create({
   handleBarAlign: { alignItems: 'center', paddingVertical: 15 },
   handleBar: { width: 40, height: 5, backgroundColor: '#333', borderRadius: 2.5 },
   title: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 8 },
-  infoText: { color: '#888', fontSize: 14, marginBottom: 20 },
+  
+  infoContainer: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
+  starIcon: { marginRight: 4, marginBottom: 1 },
+  infoText: { color: '#888', fontSize: 14 },
+  
   tagRow: { marginBottom: 30 },
   tag: { borderWidth: 1, borderColor: '#FF5A36', borderRadius: 20, paddingVertical: 6, paddingHorizontal: 12, marginRight: 8, backgroundColor: 'rgba(255, 90, 54, 0.1)' },
   tagText: { color: '#FF5A36', fontSize: 13, fontWeight: '600' },
   section: { marginBottom: 30 },
   sectionTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 15 },
+  
+  videoContainer: { borderRadius: 12, overflow: 'hidden', backgroundColor: '#000' },
   synopsisText: { color: '#ccc', lineHeight: 22, fontSize: 14 },
   readMoreText: { color: '#FF5A36', marginTop: 8, fontWeight: 'bold' },
   castScroll: { paddingRight: 20 },
@@ -339,12 +490,14 @@ const styles = StyleSheet.create({
   castName: { color: '#fff', fontSize: 12, fontWeight: '600', textAlign: 'center' },
   castRole: { color: '#888', fontSize: 11, textAlign: 'center' },
   
-  ottList: { gap: 12 },
-  ottItem: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#1a1a1a', padding: 16, borderRadius: 12, borderWidth: 1 },
-  ottName: { fontSize: 16, fontWeight: 'bold' },
+  ottScrollContainer: { gap: 16, paddingRight: 20 },
+  ottIconWrapper: { width: 60, height: 60, borderRadius: 16, overflow: 'hidden', backgroundColor: '#333', marginRight: 12, borderWidth: 1, borderColor: '#222' },
+  ottIconImage: { width: '100%', height: '100%' },
+  emptyOttText: { color: '#666', fontSize: 14, fontStyle: 'italic' },
 
-  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: 'transparent', flexDirection: 'row', gap: 15 },
-  playlistIconBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', justifyContent: 'center', alignItems: 'center' },
+  footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: 'transparent', flexDirection: 'row', gap: 10 },
+  // 💡 버튼 이름 변경: playlistIconBtn -> circleIconBtn (공용으로 사용)
+  circleIconBtn: { width: 56, height: 56, borderRadius: 28, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', justifyContent: 'center', alignItems: 'center' },
   pinButton: { flex: 1, backgroundColor: '#FF5A36', flexDirection: 'row', justifyContent: 'center', alignItems: 'center', borderRadius: 30, shadowColor: '#FF5A36', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 10 },
   pinButtonActive: { backgroundColor: '#333', shadowColor: 'transparent', borderWidth: 1, borderColor: '#444' },
   pinButtonText: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
@@ -363,18 +516,34 @@ const styles = StyleSheet.create({
 
   createFormContainer: { marginTop: 10 },
   textInput: { backgroundColor: '#0a0a0a', color: '#fff', borderRadius: 8, padding: 15, fontSize: 16, borderWidth: 1, borderColor: '#333', marginBottom: 20 },
-  
-  // ✅ 개인설정 선택기 스타일
   privacySelector: { flexDirection: 'row', gap: 10, marginBottom: 20 },
   privacyOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 10, borderWidth: 1, borderColor: '#333', backgroundColor: '#0a0a0a', gap: 6 },
   privacyOptionActive: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.05)' },
   privacyText: { color: '#666', fontSize: 14, fontWeight: 'bold' },
   privacyTextActive: { color: '#FF5A36' },
-
   modalButtonContainer: { flexDirection: 'row', gap: 10 },
   actionBtn: { flex: 1, paddingVertical: 14, borderRadius: 8, alignItems: 'center' },
   cancelBtn: { backgroundColor: '#333' },
   confirmBtn: { backgroundColor: '#FF5A36' },
   cancelBtnText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
   confirmBtnText: { color: '#111', fontSize: 16, fontWeight: 'bold' },
+
+  // --- 💡 글쓰기 모달 관련 스타일 ---
+  writeModalContainer: { flex: 1, backgroundColor: '#0a0a0a' },
+  writeModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#222' },
+  modalCancelText: { color: '#aaa', fontSize: 16 },
+  writeModalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  modalSubmitText: { color: '#FF5A36', fontSize: 16, fontWeight: 'bold' },
+  writeModalBody: { padding: 20 },
+  selectedMovieBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: '#FF5A36' },
+  selectedMovieImage: { width: 50, height: 75, borderRadius: 8, marginRight: 15 },
+  selectedMovieInfo: { flex: 1 },
+  selectedMovieTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  selectedMovieLabel: { color: '#aaa', fontSize: 13 },
+  inputSection: { marginBottom: 20 },
+  contentInput: { color: '#fff', fontSize: 16, lineHeight: 24, textAlignVertical: 'top', minHeight: 150 },
+  tagInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 15, height: 50, borderWidth: 1, borderColor: '#333' },
+  tagInput: { flex: 1, color: '#FF5A36', fontSize: 14 },
+  toastContainer: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255, 90, 54, 0.95)', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 25, zIndex: 999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
+  toastText: { color: '#fff', fontSize: 14, fontWeight: 'bold', textAlign: 'center' },
 });

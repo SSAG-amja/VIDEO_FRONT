@@ -1,11 +1,13 @@
 // app/playlist/[id].tsx
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Image, Pressable, Alert, Modal, TextInput, ActivityIndicator, FlatList } from 'react-native';
+import { 
+  View, Text, StyleSheet, Image, Pressable, Alert, Modal, TextInput, 
+  ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, ScrollView
+} from 'react-native';
 import { useLocalSearchParams, router } from 'expo-router';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, Feather } from '@expo/vector-icons';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { fetchSearchData } from '../../api/explore';
-// ✅ 제스처 및 드래그 관련 라이브러리 임포트
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
@@ -18,7 +20,7 @@ export default function PlaylistDetailScreen() {
     togglePlaylistVisibility, 
     addMovieToPlaylist,
     removeMovieFromPlaylist,
-    updatePlaylistOrder // ✅ 추가된 순서 변경 함수
+    updatePlaylistOrder 
   } = usePlaylistStore();
 
   const playlist = customPlaylists.find(p => p.id.toString() === id);
@@ -28,6 +30,12 @@ export default function PlaylistDetailScreen() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+
+  // 💡 커뮤니티 글 작성 관련 상태
+  const [isWriteModalVisible, setIsWriteModalVisible] = useState(false);
+  const [postContent, setPostContent] = useState('');
+  const [postTags, setPostTags] = useState('');
+  const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
     if (searchQuery.trim() === '') {
@@ -92,19 +100,47 @@ export default function PlaylistDetailScreen() {
     router.push({ pathname: '/detail/[id]', params: { id: apiMovie.id, movieData: JSON.stringify(safeMovieData) } } as any);
   };
 
-  // ✅ DraggableFlatList용 렌더링 함수 (drag, isActive 프롭스 추가)
+  // 💡 글 작성 기능 핸들러
+  const showToast = (msg: string) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 2000);
+  };
+
+  const handleWritePostPress = () => {
+    if (!playlist.isPublic) {
+      Alert.alert(
+        "비공개 재생목록",
+        "커뮤니티에 글을 작성하려면 공유 플레이리스트(공개)로 설정해야 합니다.\n자물쇠 버튼을 눌러 공개로 변경해주세요."
+      );
+      return;
+    }
+    setIsWriteModalVisible(true);
+  };
+
+  const handleSubmitPost = () => {
+    if (!postContent.trim()) return showToast("내용을 입력해주세요.");
+    
+    // TODO: 백엔드 API 연동 (playlist.id와 작성 내용 전송)
+    
+    showToast("게시글이 등록되었습니다.");
+    setTimeout(() => {
+      setIsWriteModalVisible(false);
+      setPostContent('');
+      setPostTags('');
+    }, 1000);
+  };
+
   const renderMovieItem = ({ item, drag, isActive }: RenderItemParams<any>) => (
     <ScaleDecorator>
       <Pressable 
         style={[styles.movieCard, isActive && styles.activeMovieCard]} 
-        onLongPress={drag} // ✅ 길게 누르면 드래그 시작
+        onLongPress={drag} 
         delayLongPress={200}
         onPress={() => router.push({ 
           pathname: '/detail/[id]', 
           params: { id: item.id, movieData: JSON.stringify(item) } 
         } as any)}
       >
-        {/* 드래그 가능함을 알려주는 아이콘 */}
         <Ionicons name="reorder-two" size={24} color="#555" style={{ marginRight: 10 }} />
         <Image source={{ uri: item.image }} style={styles.movieImage} />
         <View style={styles.movieInfo}>
@@ -157,7 +193,6 @@ export default function PlaylistDetailScreen() {
     </Pressable>
   );
 
-  // ✅ 제스처 핸들러 작동을 위해 전체를 GestureHandlerRootView로 감쌉니다.
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
@@ -169,19 +204,27 @@ export default function PlaylistDetailScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>{playlist.name}</Text>
           
           <View style={styles.headerActions}>
+            {/* 💡 커뮤니티 글쓰기 버튼 (공개 여부에 따라 스타일 및 동작 분기) */}
+            <Pressable 
+              style={[styles.iconButton, !playlist.isPublic && { opacity: 0.3 }]} 
+              onPress={handleWritePostPress}
+            >
+              <Ionicons name="pencil" size={22} color="#fff" />
+            </Pressable>
+
             <Pressable style={styles.iconButton} onPress={() => togglePlaylistVisibility(playlist.id)}>
               <Ionicons name={playlist.isPublic ? "lock-open" : "lock-closed"} size={24} color={playlist.isPublic ? "#FF5A36" : "#aaa"} />
             </Pressable>
+            
             <Pressable style={styles.iconButton} onPress={handleDeletePlaylist}>
               <Ionicons name="trash-outline" size={24} color="#ff4444" />
             </Pressable>
           </View>
         </View>
 
-        {/* ✅ FlatList를 DraggableFlatList로 변경 */}
         <DraggableFlatList
           data={playlist.movies}
-          onDragEnd={({ data }) => updatePlaylistOrder(playlist.id, data)} // 드래그 종료 시 새 순서 저장
+          onDragEnd={({ data }) => updatePlaylistOrder(playlist.id, data)}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderMovieItem}
           ListHeaderComponent={renderHeaderComponent}
@@ -194,6 +237,7 @@ export default function PlaylistDetailScreen() {
           showsVerticalScrollIndicator={false}
         />
 
+        {/* 영화 추가 모달 */}
         <Modal visible={isSearchModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsSearchModalVisible(false)}>
           <View style={styles.modalContainer}>
             <View style={styles.modalHeader}>
@@ -230,6 +274,70 @@ export default function PlaylistDetailScreen() {
             )}
           </View>
         </Modal>
+
+        {/* --- 💡 글쓰기 모달 --- */}
+        <Modal visible={isWriteModalVisible} animationType="slide" presentationStyle="pageSheet">
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.writeModalContainer}>
+            <View style={styles.writeModalHeader}>
+              <Pressable onPress={() => setIsWriteModalVisible(false)}>
+                <Text style={styles.writeModalCancelText}>취소</Text>
+              </Pressable>
+              <Text style={styles.writeModalTitle}>새 게시글</Text>
+              <Pressable onPress={handleSubmitPost}>
+                <Text style={styles.writeModalSubmitText}>등록</Text>
+              </Pressable>
+            </View>
+
+            <ScrollView style={styles.writeModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              
+              {/* 이미 태그된 플레이리스트 정보 표시 */}
+              <View style={styles.selectedMovieBox}>
+                <View style={[styles.selectedMovieImage, { backgroundColor: '#222', justifyContent: 'center', alignItems: 'center' }]}>
+                   <Ionicons name="folder" size={30} color="#FF5A36" />
+                </View>
+                <View style={styles.selectedMovieInfo}>
+                  <Text style={styles.selectedMovieTitle}>{playlist.name}</Text>
+                  <Text style={styles.selectedMovieLabel}>플레이리스트 태그됨 (영화 {playlist.movies.length}편)</Text>
+                </View>
+              </View>
+
+              {/* 본문 입력창 */}
+              <View style={styles.inputSection}>
+                <TextInput
+                  style={styles.contentInput}
+                  placeholder="이 플레이리스트에 대한 생각을 자유롭게 남겨주세요."
+                  placeholderTextColor="#666"
+                  multiline
+                  maxLength={500}
+                  value={postContent}
+                  onChangeText={setPostContent}
+                  autoFocus
+                />
+              </View>
+
+              {/* 해시태그 입력창 */}
+              <View style={styles.inputSection}>
+                <View style={styles.tagInputWrapper}>
+                  <Ionicons name="pricetag-outline" size={18} color="#666" style={{ marginRight: 8 }} />
+                  <TextInput
+                    style={styles.tagInput}
+                    placeholder="해시태그 띄어쓰기로 구분 (예: #스릴러모음 #띵작)"
+                    placeholderTextColor="#666"
+                    value={postTags}
+                    onChangeText={setPostTags}
+                  />
+                </View>
+              </View>
+            </ScrollView>
+
+            {toastMessage !== '' && (
+              <View style={styles.toastContainer}>
+                <Text style={styles.toastText}>{toastMessage}</Text>
+              </View>
+            )}
+          </KeyboardAvoidingView>
+        </Modal>
+
       </View>
     </GestureHandlerRootView>
   );
@@ -240,7 +348,7 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, marginBottom: 20 },
   headerBackButton: { padding: 5 },
   headerTitle: { flex: 1, color: '#fff', fontSize: 20, fontWeight: 'bold', textAlign: 'center', marginHorizontal: 10 },
-  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  headerActions: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   iconButton: { padding: 5 },
   errorContainer: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#0a0a0a' },
   errorText: { color: '#aaa', fontSize: 16, marginBottom: 20 },
@@ -251,7 +359,7 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 20, paddingBottom: 40 },
   
   movieCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', padding: 10, borderRadius: 16, borderWidth: 1, borderColor: '#222', marginBottom: 15 },
-  activeMovieCard: { backgroundColor: '#222', borderColor: '#FF5A36', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 }, // 드래그 중일 때의 스타일
+  activeMovieCard: { backgroundColor: '#222', borderColor: '#FF5A36', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 },
   movieImage: { width: 60, height: 85, borderRadius: 10, backgroundColor: '#333' },
   movieInfo: { flex: 1, marginLeft: 15, justifyContent: 'center' },
   movieTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
@@ -277,4 +385,23 @@ const styles = StyleSheet.create({
   dropdownButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14 },
   dropdownDivider: { height: 1, backgroundColor: '#333', marginHorizontal: 20 },
   dropdownText: { color: '#aaa', fontSize: 15, fontWeight: 'bold' },
+
+  // --- 💡 글쓰기 모달 스타일 추가 ---
+  writeModalContainer: { flex: 1, backgroundColor: '#0a0a0a' },
+  writeModalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#222' },
+  writeModalCancelText: { color: '#aaa', fontSize: 16 },
+  writeModalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  writeModalSubmitText: { color: '#FF5A36', fontSize: 16, fontWeight: 'bold' },
+  writeModalBody: { padding: 20 },
+  selectedMovieBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, padding: 12, marginBottom: 20, borderWidth: 1, borderColor: '#FF5A36' },
+  selectedMovieImage: { width: 50, height: 75, borderRadius: 8, marginRight: 15 },
+  selectedMovieInfo: { flex: 1 },
+  selectedMovieTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
+  selectedMovieLabel: { color: '#aaa', fontSize: 13 },
+  inputSection: { marginBottom: 20 },
+  contentInput: { color: '#fff', fontSize: 16, lineHeight: 24, textAlignVertical: 'top', minHeight: 150 },
+  tagInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 15, height: 50, borderWidth: 1, borderColor: '#333' },
+  tagInput: { flex: 1, color: '#FF5A36', fontSize: 14 },
+  toastContainer: { position: 'absolute', bottom: 40, alignSelf: 'center', backgroundColor: 'rgba(255, 90, 54, 0.95)', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 25, zIndex: 999, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 5 },
+  toastText: { color: '#fff', fontSize: 14, fontWeight: 'bold', textAlign: 'center' },
 });
