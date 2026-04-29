@@ -3,30 +3,31 @@ import { View, Text, StyleSheet, TextInput, ScrollView, ImageBackground, Pressab
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchSearchData, fetchRecommendData } from '../../api/explore'; // 👈 API 함수 임포트
+import { fetchSearchData, fetchRecommendData } from '../../api/explore'; 
 
-// 💡 1. 실제 사용할 태그 목록으로 교체
 const MOOD_TAGS = ['#대한민국 인기작', '#전세계 인기작', '#평점 높은 명작', '#도파민 폭발 액션', '#가볍게 웃기 좋은'];
 
 export default function ExploreScreen() {
-  const [activeTag, setActiveTag] = useState(MOOD_TAGS[0]); // 기본값: #대한민국 인기작
+  const [activeTag, setActiveTag] = useState(MOOD_TAGS[0]); 
   
   // 🔍 검색 관련 상태
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  
+  // 🔽 정렬 상태에 'rating'(평점순) 추가
+  const [sortOrder, setSortOrder] = useState<'latest' | 'likes' | 'rating'>('latest');
 
   // 🏷️ 태그 기반 추천 관련 상태
   const [defaultMovies, setDefaultMovies] = useState<any[]>([]);
   const [isLoadingTags, setIsLoadingTags] = useState(false);
 
-  // 💡 2. 태그가 바뀔 때마다 백엔드에서 새로운 영화 리스트를 가져옵니다.
+  // 무드 태그 검색
   useEffect(() => {
     const loadRecommendMovies = async () => {
       setIsLoadingTags(true);
       const results = await fetchRecommendData(activeTag);
       
-      // Masonry 그리드의 재미를 위해 프론트에서 높이(height)를 200~300 사이로 랜덤하게 섞어줍니다.
       const moviesWithHeight = results.map((m: any) => ({
         ...m,
         height: Math.floor(Math.random() * (300 - 200 + 1)) + 200 
@@ -39,9 +40,9 @@ export default function ExploreScreen() {
     if (searchQuery.trim() === '') {
       loadRecommendMovies();
     }
-  }, [activeTag, searchQuery]); // activeTag가 바뀔 때 실행
+  }, [activeTag, searchQuery]); 
 
-  // --- 기존 검색 디바운스 로직 (변경 없음) ---
+  // 🔍 검색 디바운스 로직 (sortOrder가 바뀔 때도 재검색)
   useEffect(() => {
     if (searchQuery.trim() === '') {
       setSearchResults([]);
@@ -49,22 +50,20 @@ export default function ExploreScreen() {
     }
     setIsSearching(true);
     const delayDebounceFn = setTimeout(async () => {
-      const results = await fetchSearchData(searchQuery);
+      const results = await fetchSearchData(searchQuery, sortOrder);
       setSearchResults(results);
       setIsSearching(false);
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
+  }, [searchQuery, sortOrder]); 
 
-  // Masonry 레이아웃 데이터 분할 (이제 실데이터 defaultMovies 사용!)
   const leftDefault = defaultMovies.filter((_, i) => i % 2 === 0);
   const rightDefault = defaultMovies.filter((_, i) => i % 2 !== 0);
   
   const leftSearch = searchResults.filter((_, i) => i % 2 === 0);
   const rightSearch = searchResults.filter((_, i) => i % 2 !== 0);
 
-  // 🎬 개별 영화 카드 컴포넌트
   const MovieCard = ({ item }: { item: any }) => (
     <Pressable 
       style={[styles.cardContainer, { height: item.height || 220 }]} 
@@ -72,7 +71,7 @@ export default function ExploreScreen() {
         const safeMovieData = {
           id: item.id,
           title: item.title,
-          posterPath: item.image.replace('https://image.tmdb.org/t/p/w500', ''),
+          posterPath: item.image?.replace('https://image.tmdb.org/t/p/w500', '') || '',
           rating: item.rating,
           overview: "상세 정보를 불러오는 중입니다...", 
           info: "탐색을 통해 진입했습니다.",
@@ -116,21 +115,43 @@ export default function ExploreScreen() {
       </View>
 
       {searchQuery.trim() !== '' ? (
-        // --- 1. 검색 결과 뷰 ---
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.gridScroll}>
-          {isSearching ? (
-            <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
-          ) : searchResults.length > 0 ? (
-            <View style={styles.masonryContainer}>
-              <View style={styles.column}>{leftSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
-              <View style={styles.column}>{rightSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
-            </View>
-          ) : (
-            <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
-          )}
-        </ScrollView>
+        <View style={{ flex: 1 }}>
+          {/* 🔽 정렬 토글 버튼 UI (평점순 추가) */}
+          <View style={styles.sortToggleContainer}>
+            <Pressable 
+              style={[styles.sortButton, sortOrder === 'latest' && styles.sortButtonActive]} 
+              onPress={() => setSortOrder('latest')}
+            >
+              <Text style={[styles.sortButtonText, sortOrder === 'latest' && styles.sortButtonTextActive]}>최신순</Text>
+            </Pressable>
+            <Pressable 
+              style={[styles.sortButton, sortOrder === 'likes' && styles.sortButtonActive]} 
+              onPress={() => setSortOrder('likes')}
+            >
+              <Text style={[styles.sortButtonText, sortOrder === 'likes' && styles.sortButtonTextActive]}>좋아요순</Text>
+            </Pressable>
+            <Pressable 
+              style={[styles.sortButton, sortOrder === 'rating' && styles.sortButtonActive]} 
+              onPress={() => setSortOrder('rating')}
+            >
+              <Text style={[styles.sortButtonText, sortOrder === 'rating' && styles.sortButtonTextActive]}>평점순</Text>
+            </Pressable>
+          </View>
+
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.gridScroll}>
+            {isSearching ? (
+              <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
+            ) : searchResults.length > 0 ? (
+              <View style={styles.masonryContainer}>
+                <View style={styles.column}>{leftSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
+                <View style={styles.column}>{rightSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
+              </View>
+            ) : (
+              <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
+            )}
+          </ScrollView>
+        </View>
       ) : (
-        // --- 2. 기본 무드 탐색 뷰 (태그 선택 적용) ---
         <>
           <View style={styles.tagWrapper}>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tagScroll}>
@@ -158,13 +179,20 @@ export default function ExploreScreen() {
   );
 }
 
-// ... styles는 이전과 완전히 동일합니다!
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#0a0a0a', paddingTop: 60 },
   headerTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', paddingHorizontal: 20, marginBottom: 20 },
   searchContainer: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 25, marginHorizontal: 20, paddingHorizontal: 15, height: 50, marginBottom: 20, borderWidth: 1, borderColor: '#333' },
   searchIcon: { marginRight: 10 },
   searchInput: { flex: 1, color: '#fff', fontSize: 16 },
+  
+  // 정렬 버튼 스타일
+  sortToggleContainer: { flexDirection: 'row', paddingHorizontal: 20, marginBottom: 15, gap: 10 },
+  sortButton: { paddingVertical: 6, paddingHorizontal: 14, borderRadius: 20, borderWidth: 1, borderColor: '#333', backgroundColor: '#1a1a1a' },
+  sortButtonActive: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.1)' },
+  sortButtonText: { color: '#aaa', fontSize: 13, fontWeight: '600' },
+  sortButtonTextActive: { color: '#FF5A36', fontWeight: 'bold' },
+
   tagWrapper: { height: 40, marginBottom: 20 },
   tagScroll: { paddingHorizontal: 20, gap: 10 },
   tag: { paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', justifyContent: 'center' },

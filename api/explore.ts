@@ -9,18 +9,19 @@ import client from './client';
  * # 영화 제목, 배우, 감독 등을 검색하여 가공된 영화/출연작 리스트를 받아옵니다.
  * 백엔드 경로: /api/v1/explore/search
  */
-export const fetchSearchData = async (query: string) => {
+// 💡 정렬 기준(sort)에 'rating' 추가
+export const fetchSearchData = async (query: string, sort: 'latest' | 'likes' | 'rating' = 'latest') => {
   try {
-    // axios의 params 속성을 사용하면 자동으로 ?q=검색어 형태로 변환해 줍니다.
     const response = await client.get('/api/v1/explore/search', {
-      params: { q: query },
+      params: { 
+        q: query,
+        sort: sort // 백엔드로 정렬 기준 전달
+      },
     });
     
-    // 백엔드에서 {"movies": [...]} 형태로 응답하므로 movies 배열만 추출하여 리턴
     return response.data.movies || [];
   } catch (error) {
     console.error("Search API 호출 에러:", error);
-    // 에러 발생 시 앱이 뻗지 않도록 빈 배열 반환
     return []; 
   }
 };
