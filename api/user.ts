@@ -17,8 +17,17 @@ export const submitOnboardingApi = async (onboardingData: {
   genres: number[];
   movies: number[];
 }) => {
-  const response = await client.post('/api/v1/user/me/onboarding', onboardingData);
-  return response.data;
+  const [ottsResponse, genresResponse, moviesResponse] = await Promise.all([
+    client.put('/api/v1/user/user/otts', { ott_ids: onboardingData.otts }),
+    client.put('/api/v1/user/user/genres', { genre_ids: onboardingData.genres }),
+    client.put('/api/v1/user/user/favorite-movies', { movie_ids: onboardingData.movies }),
+  ]);
+
+  return {
+    otts: ottsResponse.data,
+    genres: genresResponse.data,
+    movies: moviesResponse.data,
+  };
 };
 
 
@@ -45,25 +54,13 @@ export const updateUserProfileApi = async (updateData: {
 
 // 4. 내 OTT 구독 정보 조회 (백엔드 @router.get("/me/otts") 주석 해제 시 교체)
 export const getUserOttsApi = async () => {
-  // const response = await client.get('/api/v1/user/me/otts');
-  // return response.data;
-
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ success: true, data: [1, 3] }); // 임시로 1(넷플릭스), 3(티빙) 리턴
-    }, 500);
-  });
+  const response = await getUserProfileApi();
+  const ottIds = response.otts?.map((ott: any) => ott.tmdb_id ?? ott.id ?? ott.ott_id) ?? [];
+  return { success: true, data: ottIds };
 };
 
 // 5. 내 OTT 구독 정보 수정 (백엔드 @router.put("/me/otts") 주석 해제 시 교체)
 export const updateUserOttsApi = async (selectedOtts: number[]) => {
-  const response = await client.put('/api/v1/user/otts', { otts: selectedOtts });
+  const response = await client.put('/api/v1/user/user/otts', { ott_ids: selectedOtts });
   return response.data;
-
-  console.log('🚀 [Mock API] 백엔드로 전송될 OTT 수정 데이터:', selectedOtts);
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ success: true, message: '임시: OTT 정보 수정 성공' });
-    }, 500);
-  });
 };

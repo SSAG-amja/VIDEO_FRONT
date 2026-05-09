@@ -2,17 +2,32 @@ import { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { FontAwesome } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
+import { getUserProfileApi } from '../api/user';
 
 export default function SplashScreen() {
   useEffect(() => {
-    // 💡 2초 뒤에 '온보딩'이 아니라 '로그인 화면'으로 이동하도록 수정
-    const timer = setTimeout(() => {
-      // (auth) 그룹 폴더 안에 있으므로 /login으로 보내면 됩니다.
-      router.replace('/signin'); 
-  }, 2000);
+    const checkAuth = async () => {
+      const token = await SecureStore.getItemAsync('userToken');
 
-  return () => clearTimeout(timer);
-}, []);
+      if (!token) {
+        router.replace('/(auth)/signin');
+        return;
+      }
+
+      try {
+        const profile = await getUserProfileApi();
+        router.replace(profile.is_onboarding_completed ? '/(tabs)' : '/onboarding');
+      } catch {
+        await SecureStore.deleteItemAsync('userToken');
+        router.replace('/(auth)/signin');
+      }
+    };
+
+    const timer = setTimeout(checkAuth, 1000);
+
+    return () => clearTimeout(timer);
+  }, []);
 
   return (
     <View style={styles.container}>

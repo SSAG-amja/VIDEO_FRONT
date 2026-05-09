@@ -7,13 +7,14 @@ import { Feather } from '@expo/vector-icons';
 import { getUserOttsApi, updateUserOttsApi } from '../api/user';
 
 const OTTS = [
-  { id: 1, name: '넷플릭스' }, { id: 2, name: '왓챠' }, { id: 3, name: '티빙' }, 
-  { id: 4, name: '웨이브' }, { id: 5, name: '디즈니+' }, { id: 6, name: '쿠팡플레이' }, 
-  { id: 7, name: '애플TV+' }
+  { id: 8, name: '넷플릭스' }, { id: 337, name: '디즈니 플러스' }, { id: 1883, name: '티빙' },
+  { id: 356, name: '웨이브' }, { id: 97, name: '왓챠' }, { id: 350, name: '애플 TV' },
+  { id: 119, name: '아마존 프라임 비디오' }, { id: 3, name: '구글 플레이 무비' }, { id: 283, name: '크런치롤' }
 ];
 
 export default function EditOttScreen() {
   const router = useRouter();
+  const subtitle = '현재 구독 중인 OTT를\n모두 선택해주세요';
   
   const [selectedOtts, setSelectedOtts] = useState<number[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -75,17 +76,16 @@ export default function EditOttScreen() {
 
   return (
     <SafeAreaView style={styles.container}>
-      {/* 커스텀 헤더 */}
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Feather name="chevron-left" size={24} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle}>구독 OTT 수정</Text>
-        <View style={{ width: 24 }} /> {/* 타이틀 중앙 정렬을 위한 빈 공간 */}
+        <View style={styles.headerSpacer} />
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.scrollContent}>
-        <Text style={styles.subTitle}>현재 구독 중인 OTT를{'\n'}모두 선택해주세요</Text>
+        <Text style={styles.subTitle}>{subtitle}</Text>
         
         <View style={styles.tagContainer}>
           {OTTS.map((ott) => {
@@ -94,22 +94,19 @@ export default function EditOttScreen() {
               <Pressable 
                 key={ott.id} 
                 onPress={() => toggleItem(ott.id)} 
-                style={[styles.genreTag, isSelected && styles.genreTagSelected]}
+                style={[styles.genreTag, isSelected ? styles.genreTagSelected : null]}
               >
                 {isSelected && <Feather name="check" size={16} color="#111" style={styles.checkIcon} />}
-                <Text style={[styles.genreText, isSelected && styles.genreTextSelected]}>
-                  {ott.name}
-                </Text>
+                <Text style={[styles.genreText, isSelected ? styles.genreTextSelected : null]}>{ott.name}</Text>
               </Pressable>
             );
           })}
         </View>
       </ScrollView>
 
-      {/* 하단 고정 버튼 */}
       <View style={styles.footer}>
         <Pressable 
-          style={[styles.nextButton, isSubmitting && { opacity: 0.7 }]} 
+          style={[styles.nextButton, isSubmitting ? styles.buttonDisabled : null]} 
           onPress={handleUpdate} 
           disabled={isSubmitting}
         >
@@ -139,6 +136,7 @@ const styles = StyleSheet.create({
   },
   backButton: { padding: 4 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  headerSpacer: { width: 32 },
   
   scrollContent: { paddingHorizontal: 20, paddingTop: 30, paddingBottom: 100 },
   subTitle: { color: '#fff', fontSize: 24, fontWeight: 'bold', lineHeight: 34, marginBottom: 30 },
@@ -171,5 +169,6 @@ const styles = StyleSheet.create({
     borderTopColor: '#1a1a1a' 
   },
   nextButton: { backgroundColor: '#FF5A36', paddingVertical: 18, borderRadius: 30, alignItems: 'center' },
+  buttonDisabled: { opacity: 0.7 },
   nextButtonText: { color: '#111', fontSize: 16, fontWeight: 'bold' },
 });

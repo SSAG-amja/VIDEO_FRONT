@@ -1,7 +1,9 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router'; 
 import { signoutApi } from '../api/auth'; 
+import { getUserProfileApi } from '../api/user';
+import * as SecureStore from 'expo-secure-store';
 
 // --- Types ---
 interface MenuButtonProps {
@@ -21,6 +23,32 @@ interface MenuSwitchProps {
 export default function Profile() {
   // 추천 설정 토글 상태 (true: 구독중인 것만, false: 모든 영화)
   const [isSubscribedOnly, setIsSubscribedOnly] = useState(true);
+  const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const [profile, setProfile] = useState({
+    nickname: '',
+    email: '',
+  });
+  const avatarText = (profile.nickname || profile.email || 'U').charAt(0).toUpperCase();
+  const userNameText = `${profile.nickname || '사용자'} 님`;
+
+  useEffect(() => {
+    const fetchProfile = async () => {
+      try {
+        const data = await getUserProfileApi();
+        setProfile({
+          nickname: data.nickname || '',
+          email: data.email || '',
+        });
+      } catch (error) {
+        console.error('Profile Load Error:', error);
+        Alert.alert('에러', '사용자 정보를 불러오지 못했습니다.');
+      } finally {
+        setIsLoadingProfile(false);
+      }
+    };
+
+    fetchProfile();
+  }, []);
 
   // 1. 로그아웃 로직
   const handleLogout = () => {
@@ -35,7 +63,7 @@ export default function Profile() {
           onPress: async () => {
             try {
               await signoutApi();
-              // TODO: 토큰 삭제 로직
+              await SecureStore.deleteItemAsync('userToken');
               router.replace('/(auth)/signin'); 
             } catch (error) {
               console.error('Logout Error:', error);
@@ -75,9 +103,7 @@ export default function Profile() {
   const MenuButton: React.FC<MenuButtonProps> = ({ title, onPress, isDestructive = false }) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
       <View style={styles.menuContent}>
-        <Text style={[styles.menuText, isDestructive && styles.destructiveText]}>
-          {title}
-        </Text>
+        <Text style={[styles.menuText, isDestructive ? styles.destructiveText : null]}>{title}</Text>
       </View>
     </TouchableOpacity>
   );
@@ -102,11 +128,17 @@ export default function Profile() {
     <SafeAreaView style={styles.container}>
       {/* 헤더 (프로필 요약) */}
       <View style={styles.headerContainer}>
-        <View style={styles.profileAvatar}>
-          <Text style={styles.avatarText}>A</Text>
-        </View>
-        <Text style={styles.userName}>김호영 님</Text>
-        <Text style={styles.userEmail}>kimhoddi@kangwon.ac.kr</Text>
+        {isLoadingProfile ? (
+          <ActivityIndicator size="large" color="#FF5A36" />
+        ) : (
+          <>
+            <View style={styles.profileAvatar}>
+              <Text style={styles.avatarText}>{avatarText}</Text>
+            </View>
+            <Text style={styles.userName}>{userNameText}</Text>
+            <Text style={styles.userEmail}>{profile.email}</Text>
+          </>
+        )}
       </View>
 
       {/* 1. 계정 설정 */}

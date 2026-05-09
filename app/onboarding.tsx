@@ -2,18 +2,18 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, Alert, TextInput, Modal, Image } from 'react-native';
 import { router } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
-import * as SecureStore from 'expo-secure-store';
 
 // 💡 api 경로를 프로젝트 구조에 맞게 수정하세요 (예: ../api/explore 또는 ../../api/explore)
 import { fetchSearchData } from '../api/explore'; 
+import { getUserProfileApi, submitOnboardingApi } from '../api/user';
 
 // ✅ 1. .env 파일에서 안전하게 API 키 불러오기
 const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 
 const OTTS = [
-  { id: 1, name: '넷플릭스' }, { id: 2, name: '왓챠' }, { id: 3, name: '티빙' }, 
-  { id: 4, name: '웨이브' }, { id: 5, name: '디즈니+' }, { id: 6, name: '쿠팡플레이' }, 
-  { id: 7, name: '애플TV+' }
+  { id: 8, name: '넷플릭스' }, { id: 337, name: '디즈니 플러스' }, { id: 1883, name: '티빙' },
+  { id: 356, name: '웨이브' }, { id: 97, name: '왓챠' }, { id: 350, name: '애플 TV' },
+  { id: 119, name: '아마존 프라임 비디오' }, { id: 3, name: '구글 플레이 무비' }, { id: 283, name: '크런치롤' }
 ];
 
 const GENRES = [
@@ -37,12 +37,48 @@ export default function OnboardingScreen() {
   const [isFetchingMovies, setIsFetchingMovies] = useState(false); 
   const [isLoadingMore, setIsLoadingMore] = useState(false);     
   const [isSubmitting, setIsSubmitting] = useState(false); 
+  const [isLoadingPreferences, setIsLoadingPreferences] = useState(true);
 
   // 🔍 모달 및 검색 관련 상태
   const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+
+  useEffect(() => {
+    const fetchPreferences = async () => {
+      try {
+        const profile = await getUserProfileApi();
+        const ottIds = profile.otts?.map((ott: any) => ott.tmdb_id ?? ott.ott_id ?? ott.id) ?? [];
+        const genreIds = profile.genres?.map((genre: any) => genre.tmdb_id ?? genre.genre_id ?? genre.id) ?? [];
+        const favoriteMovies = profile.favorite_movies?.map((movie: any) => {
+          const movieId = movie.tmdb_id ?? movie.movie_id ?? movie.id;
+          const posterPath = movie.poster_path;
+
+          return {
+            id: movieId,
+            title: movie.title ?? movie.movie_title ?? '',
+            image: posterPath
+              ? posterPath.startsWith('http')
+                ? posterPath
+                : `https://image.tmdb.org/t/p/w500${posterPath}`
+              : 'https://via.placeholder.com/500x750?text=No+Image',
+          };
+        }).filter((movie: any) => movie.id) ?? [];
+
+        setSelectedOtts(ottIds);
+        setSelectedGenres(genreIds);
+        setSelectedMovies(favoriteMovies.map((movie: any) => movie.id));
+        setMovies(favoriteMovies);
+      } catch (error) {
+        console.error('온보딩 기존 취향 정보 로드 실패:', error);
+      } finally {
+        setIsLoadingPreferences(false);
+      }
+    };
+
+    fetchPreferences();
+  }, []);
 
   // 🔍 검색 디바운스 로직
   useEffect(() => {
@@ -135,10 +171,10 @@ export default function OnboardingScreen() {
 
       if (newMovies && newMovies.length > 0) {
         setMovies(prev => {
-          if (isInitial) return newMovies;
-          
           const existingIds = new Set(prev.map(m => m.id));
           const uniqueNewMovies = newMovies.filter((m: any) => !existingIds.has(m.id));
+
+          if (isInitial) return [...prev, ...uniqueNewMovies];
           return [...prev, ...uniqueNewMovies];
         });
         setPage(targetPage);
@@ -185,12 +221,20 @@ export default function OnboardingScreen() {
     }
 
     setIsSubmitting(true);
-    
-    // API 통신 임시 주석 처리
-    setTimeout(() => {
-      setIsSubmitting(false);
+
+    try {
+      await submitOnboardingApi({
+        otts: selectedOtts,
+        genres: selectedGenres,
+        movies: selectedMovies,
+      });
       router.replace('/(tabs)'); 
-    }, 500);
+    } catch (error) {
+      console.error('온보딩 저장 실패:', error);
+      Alert.alert('오류', '온보딩 정보를 저장하지 못했습니다. 다시 시도해주세요.');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getStepTitle = () => {
@@ -238,7 +282,11 @@ export default function OnboardingScreen() {
       </View>
 
       <View style={styles.contentArea}>
-        {isFetchingMovies ? (
+        {isLoadingPreferences ? (
+          <View style={styles.loadingArea}>
+            <ActivityIndicator size="large" color="#FF5A36" />
+          </View>
+        ) : isFetchingMovies ? (
           <View style={styles.loadingArea}>
             <ActivityIndicator size="large" color="#FF5A36" />
             <Text style={styles.loadingText}>선택하신 장르의 명작을 찾는 중...</Text>

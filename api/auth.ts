@@ -13,11 +13,11 @@ export const signinApi = async (email: string, password: string) => {
 };
 
 // 2. 회원가입 (Signup)
-export const signupApi = async (email: string, password: string, password_check: string, nickname: string, birth_date: string, gender: string) => {
+export const signupApi = async (email: string, password: string, password_confirm: string, nickname: string, birth_date: string, gender: string) => {
   const response = await client.post('/api/v1/auth/signup', {
     email, 
     password, 
-    password_check, 
+    password_confirm, 
     nickname, 
     birth_date, 
     gender,
