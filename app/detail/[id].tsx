@@ -12,6 +12,7 @@ import YoutubePlayer from 'react-native-youtube-iframe';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePinStore } from '../../store/usePinStore';
 import { fetchMovieDetailData } from '../../api/movies'; 
+import { getUserOttsApi } from '../../api/user';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -23,6 +24,7 @@ const OTT_SCHEME_MAP: Record<number, { scheme: string, name: string, customLocal
     customLocalLogo: require('../../assets/images/watcha-icon.png') 
   }, 
   96: { scheme: 'tving://', name: '티빙' }, 
+  1883: { scheme: 'tving://', name: '티빙' },
   337: { scheme: 'disneyplus://', name: '디즈니+' }, 
   356: { scheme: 'wavve://', name: '웨이브' }, 
   538: { scheme: 'coupangplay://', name: '쿠팡플레이' },
@@ -42,12 +44,18 @@ export default function DetailScreen() {
     }
     return null;
   });
+  const [subscribedOttIds, setSubscribedOttIds] = useState<number[]>([]);
 
   useEffect(() => {
     const checkAndFetchMissingData = async () => {
       if (
         movieDetail && 
-        (!movieDetail.cast || movieDetail.cast.length === 0 || movieDetail.overview === "상세 정보를 불러오는 중입니다...")
+        (
+          !movieDetail.cast ||
+          movieDetail.cast.length === 0 ||
+          !movieDetail.providers ||
+          movieDetail.overview === "상세 정보를 불러오는 중입니다..."
+        )
       ) {
         const fullData = await fetchMovieDetailData(movieDetail.id);
         if (fullData) {
@@ -57,6 +65,19 @@ export default function DetailScreen() {
     };
     checkAndFetchMissingData();
   }, [movieDetail?.id]);
+
+  useEffect(() => {
+    const fetchSubscribedOtts = async () => {
+      try {
+        const response: any = await getUserOttsApi();
+        setSubscribedOttIds((response.data ?? []).map((ottId: number | string) => Number(ottId)));
+      } catch (error) {
+        console.error('OTT 구독 정보 로드 실패:', error);
+      }
+    };
+
+    fetchSubscribedOtts();
+  }, []);
 
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
@@ -255,23 +276,32 @@ export default function DetailScreen() {
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.ottScrollContainer}>
                   {movieDetail.providers.map((provider: any) => {
                     const mappedOtt = OTT_SCHEME_MAP[provider.provider_id];
+                    const providerName = provider.provider_name ?? provider.ott_name ?? mappedOtt?.name ?? 'OTT';
+                    const isSubscribed = subscribedOttIds.includes(provider.provider_id);
                     
                     const imageSource = mappedOtt?.customLocalLogo
                       ? mappedOtt.customLocalLogo
                       : { uri: `https://image.tmdb.org/t/p/w154${provider.logo_path}` };
 
                     return (
-                      <Pressable 
-                        key={provider.provider_id} 
-                        style={styles.ottIconWrapper} 
-                        onPress={() => handleOpenOtt(provider.provider_id)}
-                      >
-                        <Image 
-                          source={imageSource} 
-                          style={styles.ottIconImage} 
-                          resizeMode="cover"
-                        />
-                      </Pressable>
+                      <View key={provider.provider_id} style={styles.ottItem}>
+                        <Pressable 
+                          style={[styles.ottIconWrapper, !isSubscribed && styles.ottIconWrapperDimmed]} 
+                          onPress={() => handleOpenOtt(provider.provider_id)}
+                        >
+                          <Image 
+                            source={imageSource} 
+                            style={[styles.ottIconImage, !isSubscribed && styles.ottIconImageDimmed]} 
+                            resizeMode="cover"
+                          />
+                        </Pressable>
+                        <Text
+                          style={[styles.ottNameText, !isSubscribed && styles.ottNameTextDimmed]}
+                          numberOfLines={1}
+                        >
+                          {providerName}
+                        </Text>
+                      </View>
                     );
                   })}
                 </ScrollView>
@@ -491,8 +521,13 @@ const styles = StyleSheet.create({
   castRole: { color: '#888', fontSize: 11, textAlign: 'center' },
   
   ottScrollContainer: { gap: 16, paddingRight: 20 },
-  ottIconWrapper: { width: 60, height: 60, borderRadius: 16, overflow: 'hidden', backgroundColor: '#333', marginRight: 12, borderWidth: 1, borderColor: '#222' },
+  ottItem: { width: 66, alignItems: 'center', marginRight: 12 },
+  ottIconWrapper: { width: 60, height: 60, borderRadius: 16, overflow: 'hidden', backgroundColor: '#333', borderWidth: 1, borderColor: '#222' },
+  ottIconWrapperDimmed: { borderColor: '#1a1a1a', opacity: 0.42 },
   ottIconImage: { width: '100%', height: '100%' },
+  ottIconImageDimmed: { opacity: 0.45 },
+  ottNameText: { color: '#ddd', fontSize: 11, fontWeight: '600', marginTop: 7, textAlign: 'center', width: 66 },
+  ottNameTextDimmed: { color: '#666' },
   emptyOttText: { color: '#666', fontSize: 14, fontStyle: 'italic' },
 
   footer: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 30, backgroundColor: 'transparent', flexDirection: 'row', gap: 10 },

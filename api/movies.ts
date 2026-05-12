@@ -11,8 +11,16 @@ import client from './client';
  */
 export const fetchMovieDetailData = async (movieId: string | number) => {
   try {
-    const response = await client.get(`/api/v1/movie_load/${movieId}`);
-    return response.data;
+    const response = await client.get(`/api/v1/explore/movies/${movieId}`);
+    const data = response.data;
+    const streamingProviders = (data.providers ?? data.otts ?? []).filter(
+      (provider: any) => !provider.type || provider.type === 'streaming'
+    );
+
+    return {
+      ...data,
+      providers: streamingProviders,
+    };
   } catch (error) {
     console.error("영화 상세 정보 호출 에러:", error);
     return null;
