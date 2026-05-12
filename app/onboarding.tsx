@@ -1,14 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, Alert, TextInput, Modal, Image } from 'react-native';
 import { router } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
 // 💡 api 경로를 프로젝트 구조에 맞게 수정하세요 (예: ../api/explore 또는 ../../api/explore)
-import { fetchSearchData } from '../api/explore'; 
+import { fetchMoviesByGenres, fetchSearchData, SEARCH_PAGE_SIZE } from '../api/explore'; 
 import { getUserProfileApi, submitOnboardingApi } from '../api/user';
-
-// ✅ 1. .env 파일에서 안전하게 API 키 불러오기
-const TMDB_API_KEY = process.env.EXPO_PUBLIC_TMDB_API_KEY;
 
 const OTTS = [
   { id: 8, name: '넷플릭스' }, { id: 337, name: '디즈니 플러스' }, { id: 1883, name: '티빙' },
@@ -44,6 +41,10 @@ export default function OnboardingScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchHasMore, setSearchHasMore] = useState(false);
+  const [isLoadingMoreSearch, setIsLoadingMoreSearch] = useState(false);
+  const searchRequestIdRef = useRef(0);
 
   useEffect(() => {
     const fetchPreferences = async () => {
@@ -83,23 +84,56 @@ export default function OnboardingScreen() {
   // 🔍 검색 디바운스 로직
   useEffect(() => {
     if (searchQuery.trim() === '') {
+      searchRequestIdRef.current += 1;
       setSearchResults([]);
+      setSearchPage(1);
+      setSearchHasMore(false);
+      setIsSearching(false);
       return;
     }
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
     setIsSearching(true);
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await fetchSearchData(searchQuery);
+        const results = await fetchSearchData(searchQuery, 'latest', 1, SEARCH_PAGE_SIZE);
+        if (requestId !== searchRequestIdRef.current) return;
         setSearchResults(results);
+        setSearchPage(1);
+        setSearchHasMore(results.length === SEARCH_PAGE_SIZE);
       } catch (error) {
         console.error("검색 중 오류 발생:", error);
       } finally {
-        setIsSearching(false);
+        if (requestId === searchRequestIdRef.current) setIsSearching(false);
       }
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
+
+  const mergeSearchResults = (prev: any[], next: any[]) => {
+    const existingIds = new Set(prev.map((movie) => movie.id));
+    return [...prev, ...next.filter((movie) => !existingIds.has(movie.id))];
+  };
+
+  const handleLoadMoreSearch = async () => {
+    if (isLoadingMoreSearch || isSearching || !searchHasMore || searchQuery.trim() === '') return;
+
+    const nextPage = searchPage + 1;
+    const requestId = searchRequestIdRef.current;
+    setIsLoadingMoreSearch(true);
+    try {
+      const results = await fetchSearchData(searchQuery, 'latest', nextPage, SEARCH_PAGE_SIZE);
+      if (requestId !== searchRequestIdRef.current) return;
+      setSearchResults((prev) => mergeSearchResults(prev, results));
+      setSearchPage(nextPage);
+      setSearchHasMore(results.length === SEARCH_PAGE_SIZE);
+    } catch (error) {
+      console.error("Search pagination failed:", error);
+    } finally {
+      setIsLoadingMoreSearch(false);
+    }
+  };
 
   const toggleItem = (itemId: number, selectedList: number[], setSelectedList: any) => {
     if (selectedList.includes(itemId)) {
@@ -129,32 +163,6 @@ export default function OnboardingScreen() {
     }
   };
 
-  const fetchFromTMDB = async (genreIds: number[], pageNum: number) => {
-    try {
-      if (!TMDB_API_KEY) {
-        console.error("API 키가 없습니다. .env 파일을 확인해주세요.");
-        return [];
-      }
-
-      const genreString = genreIds.join(',');
-      const url = `https://api.themoviedb.org/3/discover/movie?api_key=${TMDB_API_KEY}&language=ko-KR&sort_by=vote_average.desc&vote_count.gte=100&with_genres=${genreString}&page=${pageNum}`;
-      
-      const response = await fetch(url);
-      const data = await response.json();
-      
-      if (!data.results) return [];
-
-      return data.results.map((item: any) => ({
-        id: item.id,
-        title: item.title,
-        image: item.poster_path ? `https://image.tmdb.org/t/p/w500${item.poster_path}` : 'https://via.placeholder.com/500x750?text=No+Image',
-      }));
-    } catch (err) {
-      console.error("TMDB 호출 에러:", err);
-      return [];
-    }
-  };
-
   const loadMovies = async (targetPage: number, isInitial: boolean = false) => {
     if (selectedGenres.length === 0) return;
 
@@ -167,14 +175,22 @@ export default function OnboardingScreen() {
     }
 
     try {
-      const newMovies = await fetchFromTMDB(selectedGenres, targetPage);
+      const newMovies = await fetchMoviesByGenres(selectedGenres, targetPage);
 
-      if (newMovies && newMovies.length > 0) {
+      if (isInitial) {
+        setMovies(prev => {
+          const selectedMovieSet = new Set(selectedMovies);
+          const preferredMovies = prev.filter((movie: any) => selectedMovieSet.has(movie.id));
+          const existingIds = new Set(preferredMovies.map((movie: any) => movie.id));
+          const uniqueNewMovies = (newMovies || []).filter((movie: any) => !existingIds.has(movie.id));
+          return [...preferredMovies, ...uniqueNewMovies];
+        });
+        setPage(targetPage);
+      } else if (newMovies && newMovies.length > 0) {
         setMovies(prev => {
           const existingIds = new Set(prev.map(m => m.id));
           const uniqueNewMovies = newMovies.filter((m: any) => !existingIds.has(m.id));
 
-          if (isInitial) return [...prev, ...uniqueNewMovies];
           return [...prev, ...uniqueNewMovies];
         });
         setPage(targetPage);
@@ -257,7 +273,12 @@ export default function OnboardingScreen() {
         onPress={() => handleSelectSearchedMovie(item)}
       >
         <Image source={{ uri: imageUrl }} style={styles.searchItemImage} />
-        <Text style={styles.searchItemTitle} numberOfLines={2}>{item.title}</Text>
+        <View style={styles.searchItemTextBox}>
+          <Text style={styles.searchItemTitle} numberOfLines={2}>{item.title}</Text>
+          {item.badge && (
+            <Text style={styles.searchItemBadge} numberOfLines={1}>{item.badge}</Text>
+          )}
+        </View>
         {isSelected && <Ionicons name="checkmark-circle" size={24} color="#FF5A36" style={{ marginRight: 15 }} />}
       </Pressable>
     );
@@ -410,6 +431,9 @@ export default function OnboardingScreen() {
               renderItem={renderSearchItem}
               contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
               showsVerticalScrollIndicator={false}
+              onEndReached={handleLoadMoreSearch}
+              onEndReachedThreshold={0.5}
+              ListFooterComponent={isLoadingMoreSearch ? <ActivityIndicator size="small" color="#FF5A36" style={{ marginVertical: 20 }} /> : null}
             />
           ) : searchQuery.trim() !== '' ? (
             <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
@@ -470,5 +494,7 @@ const styles = StyleSheet.create({
   searchItemWrapper: { flexDirection: 'row', alignItems: 'center', marginBottom: 15, backgroundColor: '#1a1a1a', borderRadius: 12, padding: 10, borderWidth: 1, borderColor: 'transparent' },
   searchItemSelected: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.1)' },
   searchItemImage: { width: 50, height: 75, borderRadius: 8, backgroundColor: '#333' },
-  searchItemTitle: { flex: 1, color: '#fff', fontSize: 15, fontWeight: 'bold', marginLeft: 15 },
+  searchItemTextBox: { flex: 1, marginLeft: 15, marginRight: 10 },
+  searchItemTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
+  searchItemBadge: { color: '#FF8A6B', fontSize: 12, fontWeight: '600', marginTop: 5 },
 });

@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { View, Text, StyleSheet, TextInput, ScrollView, ImageBackground, Pressable, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
-import { fetchSearchData, fetchRecommendData } from '../../api/explore'; 
+import { fetchSearchData, fetchRecommendData, SEARCH_PAGE_SIZE } from '../../api/explore'; 
 
 const MOOD_TAGS = ['#대한민국 인기작', '#전세계 인기작', '#평점 높은 명작', '#도파민 폭발 액션', '#가볍게 웃기 좋은'];
 
@@ -14,6 +14,10 @@ export default function ExploreScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [searchPage, setSearchPage] = useState(1);
+  const [searchHasMore, setSearchHasMore] = useState(false);
+  const [isLoadingMoreSearch, setIsLoadingMoreSearch] = useState(false);
+  const searchRequestIdRef = useRef(0);
   
   // 🔽 정렬 상태에 'rating'(평점순) 추가
   const [sortOrder, setSortOrder] = useState<'latest' | 'likes' | 'rating'>('latest');
@@ -43,16 +47,75 @@ export default function ExploreScreen() {
   }, [activeTag, searchQuery]); 
 
   // 🔍 검색 디바운스 로직 (sortOrder가 바뀔 때도 재검색)
+  const withCardHeights = (movies: any[]) => movies.map((m: any) => ({
+    ...m,
+    height: m.height || Math.floor(Math.random() * (300 - 200 + 1)) + 200,
+  }));
+
+  const mergeSearchResults = (prev: any[], next: any[]) => {
+    const existingIds = new Set(prev.map((movie) => movie.id));
+    return [...prev, ...next.filter((movie) => !existingIds.has(movie.id))];
+  };
+
+  const loadSearchResults = async (targetPage: number, append: boolean = false) => {
+    const requestId = append ? searchRequestIdRef.current : searchRequestIdRef.current + 1;
+    if (!append) searchRequestIdRef.current = requestId;
+
+    if (append) {
+      if (isLoadingMoreSearch || isSearching || !searchHasMore) return;
+      setIsLoadingMoreSearch(true);
+    } else {
+      setIsSearching(true);
+    }
+
+    try {
+      const results = withCardHeights(await fetchSearchData(searchQuery, sortOrder, targetPage, SEARCH_PAGE_SIZE));
+      if (requestId !== searchRequestIdRef.current) return;
+      setSearchHasMore(results.length === SEARCH_PAGE_SIZE);
+      setSearchPage(targetPage);
+      setSearchResults((prev) => append ? mergeSearchResults(prev, results) : results);
+    } finally {
+      if (requestId === searchRequestIdRef.current) setIsSearching(false);
+      setIsLoadingMoreSearch(false);
+    }
+  };
+
+  const handleSearchScroll = ({ nativeEvent }: any) => {
+    const paddingToBottom = 120;
+    const isBottom =
+      nativeEvent.layoutMeasurement.height + nativeEvent.contentOffset.y >=
+      nativeEvent.contentSize.height - paddingToBottom;
+
+    if (isBottom) {
+      loadSearchResults(searchPage + 1, true);
+    }
+  };
+
   useEffect(() => {
     if (searchQuery.trim() === '') {
+      searchRequestIdRef.current += 1;
       setSearchResults([]);
+      setSearchPage(1);
+      setSearchHasMore(false);
+      setIsSearching(false);
       return;
     }
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
     setIsSearching(true);
     const delayDebounceFn = setTimeout(async () => {
-      const results = await fetchSearchData(searchQuery, sortOrder);
-      setSearchResults(results);
-      setIsSearching(false);
+      try {
+        const results = (await fetchSearchData(searchQuery, sortOrder, 1, SEARCH_PAGE_SIZE)).map((m: any) => ({
+          ...m,
+          height: m.height || Math.floor(Math.random() * (300 - 200 + 1)) + 200,
+        }));
+        if (requestId !== searchRequestIdRef.current) return;
+        setSearchHasMore(results.length === SEARCH_PAGE_SIZE);
+        setSearchPage(1);
+        setSearchResults(results);
+      } finally {
+        if (requestId === searchRequestIdRef.current) setIsSearching(false);
+      }
     }, 300);
 
     return () => clearTimeout(delayDebounceFn);
@@ -138,14 +201,24 @@ export default function ExploreScreen() {
             </Pressable>
           </View>
 
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.gridScroll}>
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={styles.gridScroll}
+            onScroll={handleSearchScroll}
+            scrollEventThrottle={400}
+          >
             {isSearching ? (
               <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
             ) : searchResults.length > 0 ? (
-              <View style={styles.masonryContainer}>
-                <View style={styles.column}>{leftSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
-                <View style={styles.column}>{rightSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
-              </View>
+              <>
+                <View style={styles.masonryContainer}>
+                  <View style={styles.column}>{leftSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
+                  <View style={styles.column}>{rightSearch.map((m) => <MovieCard key={m.id} item={m} />)}</View>
+                </View>
+                {isLoadingMoreSearch && (
+                  <ActivityIndicator size="small" color="#FF5A36" style={{ marginVertical: 20 }} />
+                )}
+              </>
             ) : (
               <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
             )}

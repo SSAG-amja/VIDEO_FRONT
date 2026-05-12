@@ -1,45 +1,85 @@
-// 260330 박현식
-// 탐색 페이지 관련 API 요청 로직 (VIDEO_BACK 연동)
-
 import client from './client';
 
-/**
- * # 260330 박현식
- * # 1. TMDB 통합 검색 (Multi Search)
- * # 영화 제목, 배우, 감독 등을 검색하여 가공된 영화/출연작 리스트를 받아옵니다.
- * 백엔드 경로: /api/v1/explore/search
- */
-// 💡 정렬 기준(sort)에 'rating' 추가
-export const fetchSearchData = async (query: string, sort: 'latest' | 'likes' | 'rating' = 'latest') => {
+type SortOrder = 'latest' | 'likes' | 'rating';
+export const SEARCH_PAGE_SIZE = 20;
+
+const posterUrl = (posterPath?: string | null, fallbackSize = '500x750') => {
+  if (!posterPath) {
+    return `https://via.placeholder.com/${fallbackSize}?text=No+Image`;
+  }
+  return posterPath.startsWith('http')
+    ? posterPath
+    : `https://image.tmdb.org/t/p/w500${posterPath}`;
+};
+
+const toMovieCard = (movie: any) => {
+  const posterPath = movie.poster_path ?? movie.posterPath ?? null;
+  return {
+    id: String(movie.movie_id ?? movie.tmdb_id ?? movie.id),
+    title: movie.movie_title ?? movie.title_ko ?? movie.title ?? '',
+    image: movie.image ?? posterUrl(posterPath),
+    poster_path: posterPath,
+    posterPath,
+    rating: movie.vote_average ?? movie.rating ?? 0,
+    badge: movie.badge ?? null,
+  };
+};
+
+export const fetchSearchData = async (
+  query: string,
+  sort: SortOrder = 'latest',
+  page: number = 1,
+  limit: number = SEARCH_PAGE_SIZE
+) => {
   try {
-    const response = await client.get('/api/v1/explore/search', {
-      params: { 
-        q: query,
-        sort: sort // 백엔드로 정렬 기준 전달
+    const response = await client.get('/api/v1/explore/movies/search', {
+      params: {
+        query,
+        skip: (page - 1) * limit,
+        limit,
       },
     });
-    
-    return response.data.movies || [];
+
+    const movies = (response.data.data || []).map(toMovieCard);
+    if (sort === 'rating') {
+      movies.sort((a: any, b: any) => (b.rating ?? 0) - (a.rating ?? 0));
+    }
+    return movies;
   } catch (error) {
-    console.error("Search API 호출 에러:", error);
-    return []; 
+    console.error('Search API call failed:', error);
+    return [];
   }
 };
 
-/**
- * # 260330 박현식
- * # 2. 태그 기반 추천 영화 가져오기
- * 백엔드 경로: /api/v1/explore/recommend
- */
-
 export const fetchRecommendData = async (tag: string, page: number = 1) => {
   try {
-    const response = await client.get('/api/v1/explore/recommend', {
-      params: { tag, page },
+    const response = await client.get('/api/v1/explore/movies/search', {
+      params: {
+        tags: tag,
+        skip: (page - 1) * 50,
+        limit: 50,
+      },
     });
-    return response.data.movies || [];
+    return (response.data.data || []).map(toMovieCard);
   } catch (error) {
-    console.error("Recommend API 호출 에러:", error);
-    return []; 
+    console.error('Recommend API call failed:', error);
+    return [];
+  }
+};
+
+export const fetchMoviesByGenres = async (genreIds: number[], page: number = 1, limit: number = 50) => {
+  try {
+    const response = await client.get('/api/v1/explore/movies/search', {
+      params: {
+        genres: genreIds.join(','),
+        skip: (page - 1) * limit,
+        limit,
+      },
+    });
+
+    return (response.data.data || []).map(toMovieCard);
+  } catch (error) {
+    console.error('Genre movie API call failed:', error);
+    return [];
   }
 };
