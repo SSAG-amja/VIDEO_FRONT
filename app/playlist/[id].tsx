@@ -1,13 +1,20 @@
 // app/playlist/[id].tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { 
   View, Text, StyleSheet, Image, Pressable, Alert, Modal, TextInput, 
   ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, ScrollView
 } from 'react-native';
-import { useLocalSearchParams, router } from 'expo-router';
-import { Ionicons, Feather } from '@expo/vector-icons';
+import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { fetchSearchData } from '../../api/explore';
+import {
+  addPlaylistMovieApi,
+  clearPlaylistMoviesApi,
+  deletePlaylistMovieApi,
+  fetchPlaylistMoviesApi,
+} from '../../api/playlistItems';
+import { deletePlaylistApi, updatePlaylistApi } from '../../api/playlists';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
@@ -18,8 +25,11 @@ export default function PlaylistDetailScreen() {
     customPlaylists, 
     deletePlaylist, 
     togglePlaylistVisibility, 
+    updatePlaylist,
     addMovieToPlaylist,
     removeMovieFromPlaylist,
+    setPlaylistMovies,
+    clearPlaylistMovies,
     updatePlaylistOrder 
   } = usePlaylistStore();
 
@@ -30,6 +40,8 @@ export default function PlaylistDetailScreen() {
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedMovieIds, setSelectedMovieIds] = useState<string[]>([]);
 
   // 💡 커뮤니티 글 작성 관련 상태
   const [isWriteModalVisible, setIsWriteModalVisible] = useState(false);
@@ -57,6 +69,34 @@ export default function PlaylistDetailScreen() {
     return () => clearTimeout(delayDebounceFn);
   }, [searchQuery]);
 
+  useFocusEffect(
+    useCallback(() => {
+      if (!id) return;
+
+      let isActive = true;
+      // 2026.05.13 박현식
+      // 플레이리스트 상세 진입 시 영화 목록을 백엔드 기준으로 동기화한다.
+      const syncPlaylistMovies = async () => {
+        try {
+          const movies = await fetchPlaylistMoviesApi(id);
+          if (isActive) {
+            setPlaylistMovies(id, movies);
+          }
+        } catch (error: any) {
+          if (error?.response?.status !== 404) {
+            console.error('Playlist Movies Load Error:', error);
+          }
+        }
+      };
+
+      syncPlaylistMovies();
+
+      return () => {
+        isActive = false;
+      };
+    }, [id, setPlaylistMovies])
+  );
+
   if (!playlist) {
     return (
       <View style={styles.errorContainer}>
@@ -68,28 +108,175 @@ export default function PlaylistDetailScreen() {
     );
   }
 
+  // 2026.05.13 박현식
+  // 현재 플레이리스트 폴더를 삭제하고 상세 화면에서 빠져나간다.
   const handleDeletePlaylist = () => {
     Alert.alert(
       "재생목록 삭제",
       `'${playlist.name}' 재생목록을 삭제하시겠습니까?`,
-      [{ text: "취소", style: "cancel" }, { text: "삭제", onPress: () => { deletePlaylist(playlist.id); router.back(); }, style: "destructive" }]
+      [{
+        text: "취소",
+        style: "cancel"
+      }, {
+        text: "삭제",
+        onPress: async () => {
+          deletePlaylist(playlist.id);
+          router.back();
+          try {
+            await deletePlaylistApi(playlist.id);
+          } catch (error) {
+            console.error('Delete Playlist API Error:', error);
+            Alert.alert('삭제 실패', '플레이리스트를 삭제하지 못했습니다.');
+          }
+        },
+        style: "destructive"
+      }]
     );
   };
 
+  // 2026.05.13 박현식
+  // 현재 플레이리스트의 공개 여부를 백엔드와 전역 상태에 반영한다.
+  const handleTogglePlaylistVisibility = async () => {
+    togglePlaylistVisibility(playlist.id);
+    try {
+      const updated = await updatePlaylistApi(playlist.id, { isPublic: !playlist.isPublic });
+      updatePlaylist(playlist.id, { name: updated.name, isPublic: updated.isPublic });
+    } catch (error) {
+      console.error('Update Playlist API Error:', error);
+      togglePlaylistVisibility(playlist.id);
+      Alert.alert('수정 실패', '플레이리스트 공개 설정을 변경하지 못했습니다.');
+    }
+  };
+
+  // 2026.05.13 박현식
+  // 플레이리스트에서 영화 하나를 삭제하고 백엔드 목록 API와 동기화한다.
   const handleRemoveMovie = (movieId: string, movieTitle: string) => {
     Alert.alert(
       "영화 삭제",
       `'${movieTitle}' 영화를 목록에서 지우시겠습니까?`,
-      [{ text: "취소", style: "cancel" }, { text: "삭제", onPress: () => removeMovieFromPlaylist(playlist.id, movieId), style: "destructive" }]
+      [{
+        text: "취소",
+        style: "cancel"
+      }, {
+        text: "삭제",
+        onPress: async () => {
+          removeMovieFromPlaylist(playlist.id, movieId);
+          try {
+            await deletePlaylistMovieApi(playlist.id, movieId);
+          } catch (error: any) {
+            if (error?.response?.status !== 404) {
+              console.error('Delete Playlist Movie API Error:', error);
+              Alert.alert('삭제 실패', '플레이리스트에서 영화를 삭제하지 못했습니다.');
+            }
+          }
+        },
+        style: "destructive"
+      }]
     );
   };
 
-  const handleAddMovieToPlaylist = (apiMovie: any) => {
+  // 2026.05.13 박현식
+  // 영화 카드를 길게 눌렀을 때 다중 선택 모드로 진입하고 해당 영화를 선택한다.
+  const enterSelectionMode = (movieId: string) => {
+    setIsSelectionMode(true);
+    setSelectedMovieIds((prev) => (prev.includes(movieId) ? prev : [...prev, movieId]));
+  };
+
+  // 2026.05.13 박현식
+  // 다중 선택 모드에서 영화 선택 상태를 토글하고 선택이 없으면 모드를 종료한다.
+  const toggleMovieSelection = (movieId: string) => {
+    setSelectedMovieIds((prev) => {
+      const next = prev.includes(movieId)
+        ? prev.filter((id) => id !== movieId)
+        : [...prev, movieId];
+      if (next.length === 0) {
+        setIsSelectionMode(false);
+      }
+      return next;
+    });
+  };
+
+  // 2026.05.13 박현식
+  // 다중 선택 상태를 초기화해 일반 상세 보기 모드로 되돌린다.
+  const clearSelectionMode = () => {
+    setIsSelectionMode(false);
+    setSelectedMovieIds([]);
+  };
+
+  // 2026.05.13 박현식
+  // 선택한 여러 영화를 한 번에 플레이리스트에서 제거하고 실패한 경우 목록을 재동기화한다.
+  const handleRemoveSelectedMovies = async () => {
+    if (selectedMovieIds.length === 0) return;
+
+    const selectedCount = selectedMovieIds.length;
+    const previousMovies = playlist.movies;
+    Alert.alert('선택 영화 삭제', `선택한 영화 ${selectedCount}편을 목록에서 지우시겠습니까?`, [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          const idsToDelete = [...selectedMovieIds];
+          idsToDelete.forEach((movieId) => removeMovieFromPlaylist(playlist.id, movieId));
+          clearSelectionMode();
+
+          try {
+            await Promise.all(idsToDelete.map((movieId) => deletePlaylistMovieApi(playlist.id, movieId)));
+          } catch (error: any) {
+            if (error?.response?.status !== 404) {
+              console.error('Delete Selected Playlist Movies API Error:', error);
+              setPlaylistMovies(playlist.id, previousMovies);
+              Alert.alert('삭제 실패', '선택한 영화를 삭제하지 못했습니다.');
+            }
+          }
+        },
+      },
+    ]);
+  };
+
+  // 2026.05.13 박현식
+  // 검색한 영화를 현재 플레이리스트에 추가하고 백엔드에 저장한다.
+  const handleAddMovieToPlaylist = async (apiMovie: any) => {
     const imageUrl = apiMovie.image || (apiMovie.posterPath ? `https://image.tmdb.org/t/p/w500${apiMovie.posterPath}` : 'https://via.placeholder.com/150');
     const movieToAdd = { id: apiMovie.id.toString(), title: apiMovie.title, image: imageUrl, addedAt: new Date().toISOString() };
     addMovieToPlaylist(playlist.id, movieToAdd);
+    try {
+      await addPlaylistMovieApi(playlist.id, movieToAdd.id);
+    } catch (error: any) {
+      if (error?.response?.status !== 404) {
+        console.error('Add Playlist Movie API Error:', error);
+        Alert.alert('저장 실패', '플레이리스트에 영화를 저장하지 못했습니다.');
+      }
+    }
     Alert.alert("추가 완료", `'${movieToAdd.title}' 영화가 추가되었습니다.`);
     setActiveMenuId(null); 
+  };
+
+  // 2026.05.13 박현식
+  // 현재 플레이리스트의 영화 목록 전체 삭제를 백엔드와 전역 상태에 반영한다.
+  const handleClearPlaylistMovies = () => {
+    if (playlist.movies.length === 0) return;
+
+    Alert.alert('목록 비우기', '이 플레이리스트의 모든 영화를 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          const previousMovies = playlist.movies;
+          clearPlaylistMovies(playlist.id);
+          try {
+            await clearPlaylistMoviesApi(playlist.id);
+          } catch (error: any) {
+            if (error?.response?.status !== 404) {
+              console.error('Clear Playlist Movies API Error:', error);
+              setPlaylistMovies(playlist.id, previousMovies);
+              Alert.alert('삭제 실패', '플레이리스트를 비우지 못했습니다.');
+            }
+          }
+        },
+      },
+    ]);
   };
 
   const handleGoToDetail = (apiMovie: any) => {
@@ -130,31 +317,52 @@ export default function PlaylistDetailScreen() {
     }, 1000);
   };
 
-  const renderMovieItem = ({ item, drag, isActive }: RenderItemParams<any>) => (
-    <ScaleDecorator>
-      <Pressable 
-        style={[styles.movieCard, isActive && styles.activeMovieCard]} 
-        onLongPress={drag} 
-        delayLongPress={200}
-        onPress={() => router.push({ 
-          pathname: '/detail/[id]', 
-          params: { id: item.id, movieData: JSON.stringify(item) } 
-        } as any)}
-      >
-        <Ionicons name="reorder-two" size={24} color="#555" style={{ marginRight: 10 }} />
-        <Image source={{ uri: item.image }} style={styles.movieImage} />
-        <View style={styles.movieInfo}>
-          <Text style={styles.movieTitle}>{item.title}</Text>
-        </View>
-        <Pressable 
-          style={styles.deleteMovieButton}
-          onPress={() => handleRemoveMovie(item.id, item.title)}
+  // 2026.05.13 박현식
+  // 드래그 핸들, 다중 선택 토글, 삭제 액션을 포함한 플레이리스트 영화 카드를 렌더링한다.
+  const renderMovieItem = ({ item, drag, isActive }: RenderItemParams<any>) => {
+    const isSelected = selectedMovieIds.includes(item.id);
+
+    return (
+      <ScaleDecorator>
+        <Pressable
+          style={[styles.movieCard, isActive && styles.activeMovieCard, isSelectionMode && styles.movieCardSelectionMode]}
+          onLongPress={() => enterSelectionMode(item.id)}
+          delayLongPress={250}
+          onPress={() => {
+            if (isSelectionMode) {
+              toggleMovieSelection(item.id);
+              return;
+            }
+            router.push({
+              pathname: '/detail/[id]',
+              params: { id: item.id, movieData: JSON.stringify(item) }
+            } as any);
+          }}
         >
-          <Ionicons name="trash-outline" size={20} color="#666" />
+          {isSelectionMode && (
+            <Pressable style={styles.selectionToggle} onPress={() => toggleMovieSelection(item.id)}>
+              <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={isSelected ? '#FF5A36' : '#666'} />
+            </Pressable>
+          )}
+          <Pressable style={styles.dragHandle} onLongPress={drag} delayLongPress={120}>
+            <Ionicons name="reorder-two" size={24} color="#777" />
+          </Pressable>
+          <Image source={{ uri: item.image }} style={styles.movieImage} />
+          <View style={styles.movieInfo}>
+            <Text style={styles.movieTitle}>{item.title}</Text>
+          </View>
+          {!isSelectionMode && (
+            <Pressable
+              style={styles.deleteMovieButton}
+              onPress={() => handleRemoveMovie(item.id, item.title)}
+            >
+              <Ionicons name="trash-outline" size={20} color="#666" />
+            </Pressable>
+          )}
         </Pressable>
-      </Pressable>
-    </ScaleDecorator>
-  );
+      </ScaleDecorator>
+    );
+  };
 
   const renderSearchItem = ({ item }: { item: any }) => {
     const isMenuOpen = activeMenuId === item.id;
@@ -185,40 +393,63 @@ export default function PlaylistDetailScreen() {
   };
 
   const renderHeaderComponent = () => (
-    <Pressable style={styles.addMovieCard} onPress={() => setIsSearchModalVisible(true)}>
-      <View style={styles.addMovieIconContainer}>
-        <Ionicons name="search" size={24} color="#FF5A36" />
-      </View>
-      <Text style={styles.addMovieText}>영화 검색하여 추가하기</Text>
-    </Pressable>
+    <View>
+      <Pressable style={styles.addMovieCard} onPress={() => setIsSearchModalVisible(true)}>
+        <View style={styles.addMovieIconContainer}>
+          <Ionicons name="search" size={24} color="#FF5A36" />
+        </View>
+        <Text style={styles.addMovieText}>영화 검색하여 추가하기</Text>
+      </Pressable>
+
+      {playlist.movies.length > 0 && (
+        <Pressable style={styles.clearMoviesButton} onPress={handleClearPlaylistMovies}>
+          <Ionicons name="trash-outline" size={18} color="#ff6b5a" />
+          <Text style={styles.clearMoviesText}>목록 비우기</Text>
+        </Pressable>
+      )}
+    </View>
   );
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <View style={styles.container}>
         <View style={styles.header}>
-          <Pressable onPress={() => router.back()} style={styles.headerBackButton}>
-            <Ionicons name="arrow-back" size={28} color="#fff" />
+          <Pressable onPress={isSelectionMode ? clearSelectionMode : () => router.back()} style={styles.headerBackButton}>
+            <Ionicons name={isSelectionMode ? 'close' : 'arrow-back'} size={28} color="#fff" />
           </Pressable>
           
-          <Text style={styles.headerTitle} numberOfLines={1}>{playlist.name}</Text>
+          <Text style={styles.headerTitle} numberOfLines={1}>
+            {isSelectionMode ? `${selectedMovieIds.length}편 선택됨` : playlist.name}
+          </Text>
           
           <View style={styles.headerActions}>
-            {/* 💡 커뮤니티 글쓰기 버튼 (공개 여부에 따라 스타일 및 동작 분기) */}
-            <Pressable 
-              style={[styles.iconButton, !playlist.isPublic && { opacity: 0.3 }]} 
-              onPress={handleWritePostPress}
-            >
-              <Ionicons name="pencil" size={22} color="#fff" />
-            </Pressable>
+            {isSelectionMode ? (
+              <Pressable
+                style={[styles.iconButton, selectedMovieIds.length === 0 && { opacity: 0.35 }]}
+                onPress={handleRemoveSelectedMovies}
+                disabled={selectedMovieIds.length === 0}
+              >
+                <Ionicons name="trash-outline" size={24} color="#ff4444" />
+              </Pressable>
+            ) : (
+              <>
+                {/* 💡 커뮤니티 글쓰기 버튼 (공개 여부에 따라 스타일 및 동작 분기) */}
+                <Pressable
+                  style={[styles.iconButton, !playlist.isPublic && { opacity: 0.3 }]}
+                  onPress={handleWritePostPress}
+                >
+                  <Ionicons name="pencil" size={22} color="#fff" />
+                </Pressable>
 
-            <Pressable style={styles.iconButton} onPress={() => togglePlaylistVisibility(playlist.id)}>
-              <Ionicons name={playlist.isPublic ? "lock-open" : "lock-closed"} size={24} color={playlist.isPublic ? "#FF5A36" : "#aaa"} />
-            </Pressable>
-            
-            <Pressable style={styles.iconButton} onPress={handleDeletePlaylist}>
-              <Ionicons name="trash-outline" size={24} color="#ff4444" />
-            </Pressable>
+                <Pressable style={styles.iconButton} onPress={handleTogglePlaylistVisibility}>
+                  <Ionicons name={playlist.isPublic ? "lock-open" : "lock-closed"} size={24} color={playlist.isPublic ? "#FF5A36" : "#aaa"} />
+                </Pressable>
+
+                <Pressable style={styles.iconButton} onPress={handleDeletePlaylist}>
+                  <Ionicons name="trash-outline" size={24} color="#ff4444" />
+                </Pressable>
+              </>
+            )}
           </View>
         </View>
 
@@ -297,7 +528,7 @@ export default function PlaylistDetailScreen() {
                 </View>
                 <View style={styles.selectedMovieInfo}>
                   <Text style={styles.selectedMovieTitle}>{playlist.name}</Text>
-                  <Text style={styles.selectedMovieLabel}>플레이리스트 태그됨 (영화 {playlist.movies.length}편)</Text>
+                  <Text style={styles.selectedMovieLabel}>플레이리스트 태그됨 (영화 {playlist.movieCount ?? playlist.movies.length}편)</Text>
                 </View>
               </View>
 
@@ -359,7 +590,10 @@ const styles = StyleSheet.create({
   listContent: { paddingHorizontal: 20, paddingBottom: 40 },
   
   movieCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', padding: 10, borderRadius: 16, borderWidth: 1, borderColor: '#222', marginBottom: 15 },
+  movieCardSelectionMode: { transform: [{ translateX: 8 }], borderColor: '#333' },
   activeMovieCard: { backgroundColor: '#222', borderColor: '#FF5A36', elevation: 5, shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.3, shadowRadius: 4 },
+  selectionToggle: { width: 34, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: 4 },
+  dragHandle: { width: 34, height: 44, alignItems: 'center', justifyContent: 'center', marginRight: 6 },
   movieImage: { width: 60, height: 85, borderRadius: 10, backgroundColor: '#333' },
   movieInfo: { flex: 1, marginLeft: 15, justifyContent: 'center' },
   movieTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 6 },
@@ -367,6 +601,8 @@ const styles = StyleSheet.create({
   addMovieCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', padding: 15, borderRadius: 16, borderWidth: 1, borderColor: '#333', borderStyle: 'dashed', marginBottom: 20 },
   addMovieIconContainer: { width: 50, height: 50, borderRadius: 12, backgroundColor: 'rgba(255, 90, 54, 0.1)', justifyContent: 'center', alignItems: 'center' },
   addMovieText: { color: '#FF5A36', fontSize: 16, fontWeight: 'bold', marginLeft: 15 },
+  clearMoviesButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: 'rgba(255, 69, 58, 0.1)', borderColor: '#6b2a24', borderWidth: 1, borderRadius: 12, paddingVertical: 12, marginBottom: 15 },
+  clearMoviesText: { color: '#ff6b5a', fontSize: 14, fontWeight: 'bold' },
 
   modalContainer: { flex: 1, backgroundColor: '#111', paddingTop: 20 },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginBottom: 20 },

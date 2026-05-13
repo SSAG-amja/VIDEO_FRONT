@@ -13,6 +13,8 @@ import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePinStore } from '../../store/usePinStore';
 import { fetchMovieDetailData } from '../../api/movies'; 
 import { getUserOttsApi } from '../../api/user';
+import { saveMovieToPlaylistInteractionApi, watchMovieApi } from '../../api/library';
+import { createPlaylistApi, fetchPlaylistsApi } from '../../api/playlists';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -91,7 +93,7 @@ export default function DetailScreen() {
   const [newPlaylistName, setNewPlaylistName] = useState('');
   const [isNewPlaylistPublic, setIsNewPlaylistPublic] = useState(false); 
   
-  const { customPlaylists, createPlaylist, addMovieToPlaylist } = usePlaylistStore();
+  const { customPlaylists, addPlaylist, addMovieToPlaylist, setPlaylists } = usePlaylistStore();
 
   // 💡 커뮤니티 글 작성 관련 상태 관리 추가
   const [isWriteModalVisible, setIsWriteModalVisible] = useState(false);
@@ -103,6 +105,16 @@ export default function DetailScreen() {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 2000);
   };
+
+  useEffect(() => {
+    // 2026.05.13 박현식
+    // 영화 저장 모달에서 사용할 플레이리스트 목록을 백엔드 기준으로 동기화한다.
+    fetchPlaylistsApi()
+      .then(setPlaylists)
+      .catch((error) => {
+        console.error('Playlist Load Error:', error);
+      });
+  }, [setPlaylists]);
 
   const closeModal = () => {
     Animated.timing(translateY, {
@@ -123,29 +135,51 @@ export default function DetailScreen() {
     return () => backHandler.remove();
   }, []);
 
-  const handleAddToPlaylist = (playlistId: string, playlistName: string) => {
+  // 2026.05.13 박현식
+  // 영화 저장 액션은 playlist_id가 필요한 saved interaction으로 백엔드에 전달한다.
+  const handleAddToPlaylist = async (playlistId: string, playlistName: string) => {
     if (movieDetail) {
-      addMovieToPlaylist(playlistId, {
+      const movieToAdd = {
         id: movieDetail.id.toString(),
         title: movieDetail.title,
         image: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}`
-      });
+      };
+
+      try {
+        await saveMovieToPlaylistInteractionApi(Number(movieDetail.id), Number(playlistId));
+        try {
+          const playlists = await fetchPlaylistsApi();
+          setPlaylists(playlists);
+        } catch (syncError) {
+          console.error('Playlist Sync After Save Error:', syncError);
+          addMovieToPlaylist(playlistId, movieToAdd);
+        }
+      } catch (error: any) {
+        if (error?.response?.status !== 404) {
+          console.error('Saved Interaction API Error:', error);
+        } else {
+          console.warn('Saved interaction skipped because this playlist is not persisted in DB yet.');
+        }
+      }
+
       Alert.alert('추가 완료', `'${playlistName}'에 영화가 추가되었습니다.`);
       setPlaylistModalVisible(false);
     }
   };
 
-  const handleCreateAndAddPlaylist = () => {
+  // 2026.05.13 박현식
+  // 새 플레이리스트를 만든 직후 현재 영화를 해당 플레이리스트에 저장한다.
+  const handleCreateAndAddPlaylist = async () => {
     const trimmedName = newPlaylistName.trim();
     if (trimmedName.length === 0) return;
 
-    createPlaylist(trimmedName, isNewPlaylistPublic);
-    
-    const updatedPlaylists = usePlaylistStore.getState().customPlaylists;
-    const newPlaylist = updatedPlaylists.find(p => p.name === trimmedName);
-    
-    if (newPlaylist) {
-      handleAddToPlaylist(newPlaylist.id, newPlaylist.name);
+    try {
+      const newPlaylist = await createPlaylistApi(trimmedName, isNewPlaylistPublic);
+      addPlaylist(newPlaylist);
+      await handleAddToPlaylist(newPlaylist.id, newPlaylist.name);
+    } catch (error) {
+      console.error('Create Playlist API Error:', error);
+      Alert.alert('생성 실패', '플레이리스트를 생성하지 못했습니다.');
     }
     
     setNewPlaylistName('');
@@ -153,6 +187,8 @@ export default function DetailScreen() {
     setIsCreatingNew(false);
   };
 
+  // 2026.05.13 박현식
+  // OTT 바로 시청하기 클릭 시 watched interaction을 저장하고 앱 스킴을 실행한다.
   const handleOpenOtt = async (providerId: number) => {
     const mappedOtt = OTT_SCHEME_MAP[providerId];
     
@@ -162,13 +198,19 @@ export default function DetailScreen() {
     }
 
     try {
+      if (movieDetail?.id) {
+        watchMovieApi(Number(movieDetail.id)).catch((error) => {
+          console.error('Watched Interaction API Error:', error);
+        });
+      }
+
       const supported = await Linking.canOpenURL(mappedOtt.scheme);
       if (supported) {
         await Linking.openURL(mappedOtt.scheme);
       } else {
         Alert.alert(`${mappedOtt.name} 앱 실행`, `기기에 ${mappedOtt.name} 앱이 설치되어 있지 않습니다.`);
       }
-    } catch (error) {
+    } catch {
       Alert.alert('실행 오류', '앱을 열 수 없습니다.');
     }
   };
