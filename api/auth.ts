@@ -25,7 +25,18 @@ export const signupApi = async (email: string, password: string, password_confir
   return response.data;
 };
 
+// 2026.05.13 박현식
+// 서버 로그아웃 API를 호출해 현재 인증 세션 종료를 요청한다.
 export const signoutApi = async () => {
   const response = await client.post('/api/v1/auth/signout');
+  return response.data;
+};
+
+// 2026.05.13 박현식
+// 개인정보/비밀번호 변경 화면 진입 전 현재 비밀번호를 서버에서 검증한다.
+export const verifyPasswordApi = async (currentPassword: string) => {
+  const response = await client.post('/api/v1/auth/verify-password', {
+    current_password: currentPassword,
+  });
   return response.data;
 };

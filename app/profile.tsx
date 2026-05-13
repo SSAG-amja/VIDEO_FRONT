@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch, ActivityIndicator } from 'react-native';
-import { router } from 'expo-router'; 
-import { signoutApi } from '../api/auth'; 
+import React, { useCallback, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { router, useFocusEffect } from 'expo-router';
+import { signoutApi, verifyPasswordApi } from '../api/auth';
 import { getUserProfileApi } from '../api/user';
 import * as SecureStore from 'expo-secure-store';
 
@@ -28,27 +28,45 @@ export default function Profile() {
     nickname: '',
     email: '',
   });
+  const [verifyTarget, setVerifyTarget] = useState<'profile' | 'password' | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [isVerifyingPassword, setIsVerifyingPassword] = useState(false);
   const avatarText = (profile.nickname || profile.email || 'U').charAt(0).toUpperCase();
   const userNameText = `${profile.nickname || '사용자'} 님`;
 
-  useEffect(() => {
-    const fetchProfile = async () => {
-      try {
-        const data = await getUserProfileApi();
-        setProfile({
-          nickname: data.nickname || '',
-          email: data.email || '',
-        });
-      } catch (error) {
-        console.error('Profile Load Error:', error);
-        Alert.alert('에러', '사용자 정보를 불러오지 못했습니다.');
-      } finally {
-        setIsLoadingProfile(false);
-      }
-    };
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
 
-    fetchProfile();
-  }, []);
+      const fetchProfile = async () => {
+        try {
+          setIsLoadingProfile(true);
+          const data = await getUserProfileApi();
+          if (isActive) {
+            setProfile({
+              nickname: data.nickname || '',
+              email: data.email || '',
+            });
+          }
+        } catch (error) {
+          console.error('Profile Load Error:', error);
+          if (isActive) {
+            Alert.alert('에러', '사용자 정보를 불러오지 못했습니다.');
+          }
+        } finally {
+          if (isActive) {
+            setIsLoadingProfile(false);
+          }
+        }
+      };
+
+      fetchProfile();
+
+      return () => {
+        isActive = false;
+      };
+    }, [])
+  );
 
   // 1. 로그아웃 로직
   const handleLogout = () => {
@@ -99,6 +117,42 @@ export default function Profile() {
     router.push(path);
   };
 
+  // 2026.05.13 박현식
+  // 개인정보/비밀번호 수정 대상에 맞춰 현재 비밀번호 확인 모달을 연다.
+  const openPasswordVerify = (target: 'profile' | 'password') => {
+    setCurrentPassword('');
+    setVerifyTarget(target);
+  };
+
+  // 2026.05.13 박현식
+  // 민감한 계정 수정 화면 진입 전에 현재 비밀번호를 검증하고 대상 화면으로 이동한다.
+  const handleVerifyPassword = async () => {
+    if (!currentPassword.trim()) {
+      Alert.alert('알림', '현재 비밀번호를 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsVerifyingPassword(true);
+      await verifyPasswordApi(currentPassword);
+      const target = verifyTarget;
+      setVerifyTarget(null);
+      setCurrentPassword('');
+
+      if (target === 'profile') {
+        router.push('/editprofile' as any);
+      }
+      if (target === 'password') {
+        router.push('/editpassword' as any);
+      }
+    } catch (error) {
+      console.error('Verify Password Error:', error);
+      Alert.alert('인증 실패', '현재 비밀번호가 일치하지 않습니다.');
+    } finally {
+      setIsVerifyingPassword(false);
+    }
+  };
+
   // 공통 메뉴 버튼 컴포넌트
   const MenuButton: React.FC<MenuButtonProps> = ({ title, onPress, isDestructive = false }) => (
     <TouchableOpacity style={styles.menuItem} onPress={onPress}>
@@ -145,9 +199,13 @@ export default function Profile() {
       <View style={styles.sectionContainer}>
         <Text style={styles.sectionTitle}>계정 설정</Text>
         <View style={styles.card}>
-          <MenuButton 
-            title="개인정보 수정" 
-            onPress={() => handleNavigation('/editprofile')} 
+          <MenuButton
+            title="개인정보 수정"
+            onPress={() => openPasswordVerify('profile')}
+          />
+          <MenuButton
+            title="비밀번호 수정"
+            onPress={() => openPasswordVerify('password')}
           />
         </View>
       </View>
@@ -191,6 +249,53 @@ export default function Profile() {
           />
         </View>
       </View>
+
+      <Modal
+        visible={verifyTarget !== null}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setVerifyTarget(null)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          style={styles.verifyOverlay}
+        >
+          <Pressable style={StyleSheet.absoluteFillObject} onPress={() => setVerifyTarget(null)} />
+          <View style={styles.verifyBox}>
+            <Text style={styles.verifyTitle}>현재 비밀번호 확인</Text>
+            <Text style={styles.verifyDescription}>계정 정보를 수정하려면 현재 비밀번호를 입력해주세요.</Text>
+            <TextInput
+              style={styles.verifyInput}
+              placeholder="현재 비밀번호"
+              placeholderTextColor="#666"
+              value={currentPassword}
+              onChangeText={setCurrentPassword}
+              secureTextEntry
+              autoFocus
+            />
+            <View style={styles.verifyActions}>
+              <TouchableOpacity
+                style={[styles.verifyButton, styles.verifyCancelButton]}
+                onPress={() => setVerifyTarget(null)}
+                disabled={isVerifyingPassword}
+              >
+                <Text style={styles.verifyCancelText}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.verifyButton, styles.verifyConfirmButton]}
+                onPress={handleVerifyPassword}
+                disabled={isVerifyingPassword}
+              >
+                {isVerifyingPassword ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.verifyConfirmText}>확인</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -267,5 +372,65 @@ const styles = StyleSheet.create({
   destructiveText: {
     color: '#FF453A', 
     fontWeight: '500',
+  },
+  verifyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.65)',
+    justifyContent: 'center',
+    padding: 20,
+  },
+  verifyBox: {
+    backgroundColor: '#1C1C1E',
+    borderRadius: 14,
+    padding: 20,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+  },
+  verifyTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 8,
+  },
+  verifyDescription: {
+    color: '#8E8E93',
+    fontSize: 14,
+    lineHeight: 20,
+    marginBottom: 16,
+  },
+  verifyInput: {
+    backgroundColor: '#121212',
+    color: '#FFFFFF',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#2C2C2E',
+    padding: 14,
+    fontSize: 16,
+    marginBottom: 16,
+  },
+  verifyActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  verifyButton: {
+    flex: 1,
+    height: 46,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  verifyCancelButton: {
+    backgroundColor: '#2C2C2E',
+  },
+  verifyConfirmButton: {
+    backgroundColor: '#FF5A36',
+  },
+  verifyCancelText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+  },
+  verifyConfirmText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
   },
 });

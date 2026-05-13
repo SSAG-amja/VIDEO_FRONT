@@ -35,21 +35,25 @@ export const submitOnboardingApi = async (onboardingData: {
 // ❌ 백엔드 미구현 API (화면 구성을 위한 임시 Mocking)
 // ==========================================
 
-// 3. 내 정보 수정 (백엔드 @router.patch("/me") 주석 해제 시 교체)
+// 2026.05.13 박현식
+// 개인정보 수정 화면에서 변경한 프로필 필드를 백엔드에 저장한다.
 export const updateUserProfileApi = async (updateData: {
   nickname?: string;
   birth_date?: string;
   gender?: string;
 }) => {
-  // const response = await client.patch('/api/v1/user/me', updateData);
-  // return response.data;
+  const response = await client.patch('/api/v1/user/me', updateData);
+  return response.data;
+};
 
-  console.log('🚀 [Mock API] 백엔드로 전송될 유저 업데이트 데이터:', updateData);
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      resolve({ success: true, message: '임시: 프로필 수정 성공' });
-    }, 500);
-  });
+// 2026.05.13 박현식
+// 현재 비밀번호 인증 후 새 비밀번호를 백엔드에 전달해 해시 갱신을 요청한다.
+export const updateUserPasswordApi = async (passwordData: {
+  new_password: string;
+  new_password_confirm: string;
+}) => {
+  const response = await client.patch('/api/v1/user/me/new-password', passwordData);
+  return response.data;
 };
 
 // 4. 내 OTT 구독 정보 조회 (백엔드 @router.get("/me/otts") 주석 해제 시 교체)
