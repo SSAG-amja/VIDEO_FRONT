@@ -1,13 +1,41 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import { View, Text, StyleSheet, FlatList, Image, Pressable, Alert } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // 💡 변경된 임포트
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { usePassedStore } from '../store/usePassedStore';
+import { clearPassedMoviesApi, deletePassedMovieApi, fetchPassedMoviesApi } from '../api/library';
 
 export default function HiddenMoviesScreen() {
-  const { passedMovies, unpassMovie } = usePassedStore();
+  const { passedMovies, unpassMovie, setPassedMovies, clearPassedMovies } = usePassedStore();
 
+  useFocusEffect(
+    useCallback(() => {
+      let isActive = true;
+
+      // 2026.05.13 박현식
+      // 관심없음 화면 진입 시 passed 목록을 백엔드 기준으로 동기화한다.
+      const syncPassedMovies = async () => {
+        try {
+          const movies = await fetchPassedMoviesApi();
+          if (isActive) {
+            setPassedMovies(movies);
+          }
+        } catch (error) {
+          console.error('Passed Load Error:', error);
+        }
+      };
+
+      syncPassedMovies();
+
+      return () => {
+        isActive = false;
+      };
+    }, [setPassedMovies])
+  );
+
+  // 2026.05.13 박현식
+  // 숨긴 영화 하나를 passed 목록에서 제거하고 백엔드 삭제 API를 호출한다.
   const handleUnpass = (id: number, title: string) => {
     Alert.alert(
       "숨김 해제",
@@ -16,11 +44,42 @@ export default function HiddenMoviesScreen() {
         { text: "취소", style: "cancel" },
         { 
           text: "해제", 
-          onPress: () => unpassMovie(id),
+          onPress: async () => {
+            try {
+              await deletePassedMovieApi(id);
+              unpassMovie(id);
+            } catch (error) {
+              console.error('Unpass API Error:', error);
+              Alert.alert('해제 실패', '숨김 처리를 해제하지 못했습니다.');
+            }
+          },
           style: "default"
         }
       ]
     );
+  };
+
+  // 2026.05.13 박현식
+  // 관심없음 목록 전체 삭제를 백엔드와 전역 상태에 반영한다.
+  const handleClearPassed = () => {
+    if (passedMovies.length === 0) return;
+
+    Alert.alert('관심없음 전체 삭제', '숨긴 영화를 모두 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '전체 삭제',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await clearPassedMoviesApi();
+            clearPassedMovies();
+          } catch (error) {
+            console.error('Clear Passed API Error:', error);
+            Alert.alert('삭제 실패', '숨긴 영화를 전체 삭제하지 못했습니다.');
+          }
+        },
+      },
+    ]);
   };
 
   const renderItem = ({ item }: { item: any }) => (
@@ -49,7 +108,13 @@ export default function HiddenMoviesScreen() {
           <Ionicons name="chevron-back" size={28} color="#fff" />
         </Pressable>
         <Text style={styles.headerTitle}>숨긴 영화 관리</Text>
-        <View style={{ width: 40 }} /> {/* 좌우 밸런스를 위한 빈 뷰 */}
+        <Pressable
+          onPress={handleClearPassed}
+          style={[styles.clearButton, passedMovies.length === 0 && styles.clearButtonDisabled]}
+          disabled={passedMovies.length === 0}
+        >
+          <Ionicons name="trash-outline" size={18} color={passedMovies.length === 0 ? "#555" : "#ff6b5a"} />
+        </Pressable>
       </View>
 
       <FlatList
@@ -75,6 +140,8 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 15, paddingVertical: 15, borderBottomWidth: 1, borderBottomColor: '#1a1a1a' },
   backButton: { padding: 5 },
   headerTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
+  clearButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(255, 69, 58, 0.1)' },
+  clearButtonDisabled: { backgroundColor: '#111' },
   
   listContent: { padding: 20 },
   movieCard: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#111', padding: 12, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#222' },

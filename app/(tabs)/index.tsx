@@ -21,6 +21,7 @@ import { WebView } from "react-native-webview";
 import { API_BASE_URL } from "../../constants/api";
 import { usePinStore } from "../../store/usePinStore";
 import { usePassedStore } from "../../store/usePassedStore"; 
+import { fetchPassedMoviesApi, fetchPinnedMoviesApi, passMovieApi, pinMovieApi } from "../../api/library";
 
 const { width: WINDOW_WIDTH } = Dimensions.get("window");
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16);
@@ -65,7 +66,9 @@ const ShortsItem = ({
   const [playbackRate, setPlaybackRate] = useState<number>(1);
 
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
-  const togglePin = usePinStore((state) => state.togglePin);
+  const pinMovie = usePinStore((state) => state.pinMovie);
+  const unpinMovie = usePinStore((state) => state.unpinMovie);
+  const unpassMovie = usePassedStore((state) => state.unpassMovie);
   const isPinned = pinnedMovies.some((m) => m.id === movie.id);
 
   const pan = useRef(new Animated.ValueXY()).current;
@@ -96,17 +99,32 @@ const ShortsItem = ({
     `);
   };
 
-  const handlePinAction = () => {
-    togglePin({
+  // 2026.05.13 박현식
+  // 홈 피드 Pin 액션을 즉시 화면에 반영하고 백엔드 pinned API에 저장한다.
+  const handlePinAction = async () => {
+    const moviePayload = {
       id: movie.id,
       title: movie.title,
       image: `https://image.tmdb.org/t/p/w780${movie.posterPath}`,
-    });
+    };
+
+    pinMovie(moviePayload);
+    unpassMovie(movie.id);
+
+    try {
+      await pinMovieApi(movie.id);
+    } catch (error) {
+      console.error("Pin API Error:", error);
+      if (!isPinned) {
+        unpinMovie(movie.id);
+      }
+      Alert.alert("저장 실패", "핀 보관함에 저장하지 못했습니다.");
+    }
   };
 
   const proceedWithPass = () => {
     Animated.timing(pan, {
-      toValue: { x: -WINDOW_WIDTH, y: 0 },
+      toValue: { x: WINDOW_WIDTH, y: 0 },
       duration: 200,
       useNativeDriver: false,
     }).start(({ finished }) => {
@@ -178,14 +196,14 @@ const ShortsItem = ({
         const isSwipeRight = gestureState.dx > swipeThreshold || gestureState.vx > velocityThreshold;
         const isSwipeLeft = gestureState.dx < -swipeThreshold || gestureState.vx < -velocityThreshold;
 
-        if (isSwipeRight) {
+        if (isSwipeLeft) {
           Animated.spring(pan, {
             toValue: { x: 0, y: 0 },
             useNativeDriver: false,
           }).start();
           handlePinAction();
           setScrollEnabledRef.current(true);
-        } else if (isSwipeLeft) {
+        } else if (isSwipeRight) {
           // 💡 스와이프 시 갇혀있던 과거 상태가 아닌, 항상 최신의 Ref 함수 실행
           confirmAndPassRef.current();
         } else {
@@ -232,14 +250,14 @@ const ShortsItem = ({
   });
 
   const likeCueOpacity = pan.x.interpolate({
-    inputRange: [0, SWIPE_CUE_THRESHOLD],
-    outputRange: [0, 1],
+    inputRange: [-SWIPE_CUE_THRESHOLD, 0],
+    outputRange: [1, 0],
     extrapolate: "clamp",
   });
 
   const dislikeCueOpacity = pan.x.interpolate({
-    inputRange: [-SWIPE_CUE_THRESHOLD, 0],
-    outputRange: [1, 0],
+    inputRange: [0, SWIPE_CUE_THRESHOLD],
+    outputRange: [0, 1],
     extrapolate: "clamp",
   });
 
@@ -449,11 +467,34 @@ export default function HomeFeedScreen() {
   const [isScrollEnabled, setIsScrollEnabled] = useState<boolean>(true);
 
   const passMovie = usePassedStore((state) => state.passMovie);
+  const setPassedMovies = usePassedStore((state) => state.setPassedMovies);
+  const setPinnedMovies = usePinStore((state) => state.setPinnedMovies);
+  const unpinMovie = usePinStore((state) => state.unpinMovie);
   const flatListRef = useRef<FlatList>(null);
 
   useFocusEffect(
     useCallback(() => {
       let isActiveScreen = true;
+
+      // 2026.05.13 박현식
+      // 홈 피드 진입 시 Pin/Pass 전역 상태를 백엔드 기준으로 동기화한다.
+      const syncInteractionStores = async () => {
+        try {
+          const [pinned, passed] = await Promise.all([
+            fetchPinnedMoviesApi(),
+            fetchPassedMoviesApi(),
+          ]);
+          if (isActiveScreen) {
+            setPinnedMovies(pinned);
+            setPassedMovies(passed);
+          }
+        } catch (error) {
+          console.error("Interaction Store Sync Error:", error);
+        }
+      };
+
+      syncInteractionStores();
+
       const timer = setTimeout(() => {
         if (isActiveScreen) setIsScreenFocused(true);
       }, 300);
@@ -464,7 +505,7 @@ export default function HomeFeedScreen() {
         setIsScreenFocused(false);
         setIsGlobalMuted(true);
       };
-    }, []),
+    }, [setPassedMovies, setPinnedMovies]),
   );
 
   const fetchMovies = async (pageNumber: number) => {
@@ -512,19 +553,29 @@ export default function HomeFeedScreen() {
     }
   }, []);
 
+  // 2026.05.13 박현식
+  // 홈 피드 Pass 액션을 즉시 화면에서 제거하고 백엔드 passed API에 저장한다.
   const handlePass = useCallback((id: number) => {
+    const movieToPass = movies.find(m => m.id === id);
+    if (!movieToPass) return;
+
+    const passedPayload = {
+      id: movieToPass.id,
+      title: movieToPass.title,
+      image: `https://image.tmdb.org/t/p/w500${movieToPass.posterPath}`,
+    };
+
     setMovies((prev) => {
-      const movieToPass = prev.find(m => m.id === id);
-      if (movieToPass) {
-        passMovie({
-          id: movieToPass.id,
-          title: movieToPass.title,
-          image: `https://image.tmdb.org/t/p/w500${movieToPass.posterPath}`,
-        });
-      }
       return prev.filter((m) => m.id !== id);
     });
-  }, [passMovie]);
+    passMovie(passedPayload);
+    unpinMovie(id);
+
+    passMovieApi(id).catch((error) => {
+      console.error("Pass API Error:", error);
+      Alert.alert("저장 실패", "관심없음 목록에 저장하지 못했습니다.");
+    });
+  }, [movies, passMovie, unpinMovie]);
 
   if (isLoading) {
     return (

@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-interface PassedMovie {
+export interface PassedMovie {
   id: number;
   title: string;
   image: string;
@@ -11,6 +11,8 @@ interface PassedStoreState {
   passedMovies: PassedMovie[];
   passMovie: (movie: Omit<PassedMovie, 'passedAt'>) => void;
   unpassMovie: (id: number) => void;
+  setPassedMovies: (movies: PassedMovie[]) => void;
+  clearPassedMovies: () => void;
 }
 
 export const usePassedStore = create<PassedStoreState>((set) => ({
@@ -28,5 +30,11 @@ export const usePassedStore = create<PassedStoreState>((set) => ({
   // 숨긴 영화 목록에서 "복구" 버튼을 눌렀을 때 캐시에서 제거
   unpassMovie: (id) => set((state) => ({
     passedMovies: state.passedMovies.filter(m => m.id !== id)
-  }))
+  })),
+  // 2026.05.13 박현식
+  // 백엔드에서 조회한 관심없음 목록으로 전역 상태를 동기화한다.
+  setPassedMovies: (movies) => set({ passedMovies: movies }),
+  // 2026.05.13 박현식
+  // 관심없음 전역 상태를 빈 목록으로 초기화한다.
+  clearPassedMovies: () => set({ passedMovies: [] }),
 }));

@@ -4,6 +4,21 @@ import { router, useFocusEffect } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePinStore } from '../../store/usePinStore';
+import {
+  clearPinnedMoviesApi,
+  clearWatchedMoviesApi,
+  deletePinnedMovieApi,
+  deleteWatchedMovieApi,
+  fetchPinnedMoviesApi,
+  fetchWatchedMoviesApi,
+} from '../../api/library';
+import {
+  clearPlaylistsApi,
+  createPlaylistApi,
+  deletePlaylistApi,
+  fetchPlaylistsApi,
+  updatePlaylistApi,
+} from '../../api/playlists';
 
 const MAIN_TABS = ['Pinned', 'Watched', 'Saved'];
 const INDEX_LETTERS = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ','A','F','K','P','U','Z'];
@@ -16,9 +31,17 @@ const getChosung = (str: string) => {
 };
 
 export default function LibraryScreen() {
-  const { customPlaylists, createPlaylist, deletePlaylist, togglePlaylistVisibility } = usePlaylistStore();
-  const { pinnedMovies, togglePin } = usePinStore(); 
-  
+  const {
+    customPlaylists,
+    addPlaylist,
+    clearPlaylists,
+    deletePlaylist,
+    setPlaylists,
+    togglePlaylistVisibility,
+    updatePlaylist,
+  } = usePlaylistStore();
+  const { pinnedMovies, unpinMovie, setPinnedMovies, clearPinnedMovies } = usePinStore();
+
   const [activeTab, setActiveTab] = useState('Pinned');
   const [isModalVisible, setModalVisible] = useState(false);
   const [newPlaylistName, setNewPlaylistName] = useState('');
@@ -32,13 +55,39 @@ export default function LibraryScreen() {
 
   // 💡 지연 삭제를 위한 로컬 상태 (화면에 보여질 리스트) 추가
   const [displayPinned, setDisplayPinned] = useState(pinnedMovies);
+  const [watchedMovies, setWatchedMovies] = useState<any[]>([]);
 
   // ✅ 다른 메인 탭(홈, 탐색 등)에 다녀왔을 때(화면 포커스 복귀 시) 임시 취소된 항목 완전 제거
   useFocusEffect(
     useCallback(() => {
-      // 탭에 포커스가 돌아올 때 최신 글로벌 상태로 깔끔하게 동기화합니다.
-      setDisplayPinned(usePinStore.getState().pinnedMovies);
-    }, [])
+      let isActive = true;
+
+      // 2026.05.13 박현식
+      // 보관함 탭 진입 시 Pin/Watched/Playlist 목록을 백엔드 기준으로 동기화한다.
+      const syncLibraryMovies = async () => {
+        try {
+          const [pinned, watched, playlists] = await Promise.all([
+            fetchPinnedMoviesApi(),
+            fetchWatchedMoviesApi(),
+            fetchPlaylistsApi(),
+          ]);
+          if (isActive) {
+            setPinnedMovies(pinned);
+            setDisplayPinned(pinned);
+            setWatchedMovies(watched);
+            setPlaylists(playlists);
+          }
+        } catch (error) {
+          console.error('Library Load Error:', error);
+        }
+      };
+
+      syncLibraryMovies();
+
+      return () => {
+        isActive = false;
+      };
+    }, [setPinnedMovies, setPlaylists])
   );
 
   // 💡 Pinned 탭에 머무는 동안은 삭제해도 화면에 유지, 탭을 벗어나면 동기화
@@ -64,7 +113,13 @@ export default function LibraryScreen() {
 
   const sortedData = useMemo(() => {
     // 💡 Pinned 탭일 때는 전역 데이터가 아닌 로컬 데이터(displayPinned)를 보여줍니다.
-    let rawData = activeTab === 'Pinned' ? [...displayPinned] : activeTab === 'Saved' ? [...customPlaylists] : [];
+    let rawData = activeTab === 'Pinned'
+      ? [...displayPinned]
+      : activeTab === 'Watched'
+        ? [...watchedMovies]
+        : activeTab === 'Saved'
+          ? [...customPlaylists]
+          : [];
     
     return rawData.sort((a: any, b: any) => {
       const titleA = a.title || a.name || "";
@@ -99,7 +154,7 @@ export default function LibraryScreen() {
         return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
       }
     });
-  }, [activeTab, displayPinned, pinnedMovies, customPlaylists, sortType, sortOrder]);
+  }, [activeTab, displayPinned, watchedMovies, customPlaylists, sortType, sortOrder]);
 
   const handleScrollToLetter = (letter: string) => {
     let index = sortedData.findIndex((item: any) => {
@@ -127,19 +182,153 @@ export default function LibraryScreen() {
     }
   };
 
-  const handleCreatePlaylist = () => {
+  // 2026.05.13 박현식
+  // 새 플레이리스트 폴더를 백엔드에 생성하고 Saved 탭 상태에 반영한다.
+  const handleCreatePlaylist = async () => {
     if (!newPlaylistName.trim()) return;
-    createPlaylist(newPlaylistName.trim(), isNewPlaylistPublic); 
-    setActiveTab('Saved');
-    setNewPlaylistName('');
-    setIsNewPlaylistPublic(false);
-    setModalVisible(false);
+    try {
+      const playlist = await createPlaylistApi(newPlaylistName.trim(), isNewPlaylistPublic);
+      addPlaylist(playlist);
+      setActiveTab('Saved');
+      setNewPlaylistName('');
+      setIsNewPlaylistPublic(false);
+      setModalVisible(false);
+    } catch (error) {
+      console.error('Create Playlist API Error:', error);
+      Alert.alert('생성 실패', '플레이리스트를 생성하지 못했습니다.');
+    }
   };
 
+  // 2026.05.13 박현식
+  // 플레이리스트 폴더 하나를 삭제 확인 후 백엔드와 전역 상태에서 제거한다.
   const handleDeletePlaylist = (id: string, name: string) => {
     Alert.alert("재생목록 삭제", `'${name}' 재생목록을 삭제하시겠습니까?`, [
       { text: "취소", style: "cancel" },
-      { text: "삭제", onPress: () => deletePlaylist(id), style: "destructive" }
+      {
+        text: "삭제",
+        onPress: async () => {
+          deletePlaylist(id);
+          try {
+            await deletePlaylistApi(id);
+          } catch (error) {
+            console.error('Delete Playlist API Error:', error);
+            Alert.alert('삭제 실패', '플레이리스트를 삭제하지 못했습니다.');
+          }
+        },
+        style: "destructive"
+      }
+    ]);
+  };
+
+  // 2026.05.13 박현식
+  // 플레이리스트 공개 여부를 토글하고 백엔드 수정 API와 동기화한다.
+  const handleTogglePlaylistVisibility = async (id: string, isPublic: boolean) => {
+    togglePlaylistVisibility(id);
+    try {
+      const playlist = await updatePlaylistApi(id, { isPublic: !isPublic });
+      updatePlaylist(id, { isPublic: playlist.isPublic, name: playlist.name });
+    } catch (error) {
+      console.error('Update Playlist API Error:', error);
+      togglePlaylistVisibility(id);
+      Alert.alert('수정 실패', '플레이리스트 공개 설정을 변경하지 못했습니다.');
+    }
+  };
+
+  // 2026.05.13 박현식
+  // 모든 플레이리스트 폴더를 삭제 확인 후 백엔드와 전역 상태에서 제거한다.
+  const handleClearPlaylists = () => {
+    if (customPlaylists.length === 0) return;
+
+    Alert.alert('플레이리스트 전체 삭제', '모든 플레이리스트를 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          const previousPlaylists = customPlaylists;
+          clearPlaylists();
+          try {
+            await clearPlaylistsApi();
+          } catch (error) {
+            console.error('Clear Playlists API Error:', error);
+            setPlaylists(previousPlaylists);
+            Alert.alert('삭제 실패', '플레이리스트를 전체 삭제하지 못했습니다.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // 2026.05.13 박현식
+  // 보관함에서 개별 Pin을 해제하고 백엔드 pinned 상태를 함께 갱신한다.
+  const handleUnpinMovie = (item: any) => {
+    unpinMovie(item.id);
+    setDisplayPinned((prev) => prev.filter((movie: any) => movie.id !== item.id));
+
+    deletePinnedMovieApi(item.id).catch((error) => {
+      console.error('Unpin API Error:', error);
+      Alert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
+    });
+  };
+
+  // 2026.05.13 박현식
+  // Pin 보관함 전체 초기화를 백엔드와 화면 상태에 반영한다.
+  const handleClearPinned = () => {
+    if (pinnedMovies.length === 0) return;
+
+    Alert.alert('핀 초기화', '핀 보관함의 모든 영화를 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '초기화',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await clearPinnedMoviesApi();
+            clearPinnedMovies();
+            setDisplayPinned([]);
+          } catch (error) {
+            console.error('Clear Pinned API Error:', error);
+            Alert.alert('초기화 실패', '핀 보관함을 초기화하지 못했습니다.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // 2026.05.13 박현식
+  // Watched 목록에서 영화 하나를 삭제하고 실패 시 화면 상태를 복구한다.
+  const handleDeleteWatchedMovie = (item: any) => {
+    setWatchedMovies((prev) => prev.filter((movie: any) => movie.id !== item.id));
+
+    deleteWatchedMovieApi(item.id).catch((error) => {
+      console.error('Delete Watched API Error:', error);
+      Alert.alert('삭제 실패', '본 영화 목록에서 삭제하지 못했습니다.');
+      setWatchedMovies((prev) => (prev.some((movie: any) => movie.id === item.id) ? prev : [item, ...prev]));
+    });
+  };
+
+  // 2026.05.13 박현식
+  // Watched 목록 전체 삭제를 백엔드와 화면 상태에 반영한다.
+  const handleClearWatched = () => {
+    if (watchedMovies.length === 0) return;
+
+    Alert.alert('시청 기록 삭제', '본 영화 목록의 모든 영화를 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          const previousWatched = watchedMovies;
+          try {
+            setWatchedMovies([]);
+            await clearWatchedMoviesApi();
+          } catch (error) {
+            console.error('Clear Watched API Error:', error);
+            setWatchedMovies(previousWatched);
+            Alert.alert('삭제 실패', '본 영화 목록을 초기화하지 못했습니다.');
+          }
+        },
+      },
     ]);
   };
 
@@ -158,12 +347,30 @@ export default function LibraryScreen() {
             {item.title}
           </Text>
         </View>
-        <Pressable style={styles.actionIcon} onPress={() => togglePin(item)}>
+        <Pressable style={styles.actionIcon} onPress={() => handleUnpinMovie(item)}>
           <Ionicons name={isCurrentlyPinned ? "heart" : "heart-outline"} size={22} color={isCurrentlyPinned ? "#FF5A36" : "#aaa"} />
         </Pressable>
       </Pressable>
     );
   };
+
+  // 2026.05.13 박현식
+  // Watched 탭의 영화 카드 UI를 렌더링한다.
+  const renderWatchedItem = ({ item }: { item: any }) => (
+    <Pressable
+      style={styles.movieCard}
+      onPress={() => router.push({ pathname: '/detail/[id]', params: { id: item.id, movieData: JSON.stringify(item) } } as any)}
+    >
+      <Image source={{ uri: item.image }} style={styles.movieImage} />
+      <View style={styles.movieInfo}>
+        <Text style={styles.movieTitle}>{item.title}</Text>
+        <Text style={styles.movieTime}>시청 완료</Text>
+      </View>
+      <Pressable style={styles.actionIcon} onPress={() => handleDeleteWatchedMovie(item)}>
+        <Ionicons name="trash-outline" size={22} color="#ff4444" />
+      </Pressable>
+    </Pressable>
+  );
 
   const renderSavedItem = ({ item }: { item: any }) => (
     <Pressable 
@@ -175,10 +382,10 @@ export default function LibraryScreen() {
       </View>
       <View style={styles.movieInfo}>
         <Text style={styles.movieTitle}>{item.name}</Text>
-        <Text style={styles.movieTime}>영화 {item.movies.length}편</Text>
+        <Text style={styles.movieTime}>영화 {item.movieCount ?? item.movies.length}편</Text>
       </View>
       <View style={styles.playlistActions}>
-        <Pressable style={styles.iconButton} onPress={() => togglePlaylistVisibility(item.id)}>
+        <Pressable style={styles.iconButton} onPress={() => handleTogglePlaylistVisibility(item.id, item.isPublic)}>
           <Ionicons name={item.isPublic ? "lock-open" : "lock-closed"} size={22} color={item.isPublic ? "#FF5A36" : "#aaa"} />
         </Pressable>
         <Pressable style={styles.iconButton} onPress={() => handleDeletePlaylist(item.id, item.name)}>
@@ -208,8 +415,28 @@ export default function LibraryScreen() {
       </View>
 
       <View style={styles.filterContainer}>
+        {activeTab === 'Pinned' && pinnedMovies.length > 0 && (
+          <Pressable style={styles.dangerChip} onPress={handleClearPinned}>
+            <Ionicons name="trash-outline" size={14} color="#ff6b5a" style={{ marginRight: 4 }} />
+            <Text style={styles.dangerChipText}>핀 초기화</Text>
+          </Pressable>
+        )}
+
+        {activeTab === 'Watched' && watchedMovies.length > 0 && (
+          <Pressable style={styles.dangerChip} onPress={handleClearWatched}>
+            <Ionicons name="trash-outline" size={14} color="#ff6b5a" style={{ marginRight: 4 }} />
+            <Text style={styles.dangerChipText}>시청 기록 삭제</Text>
+          </Pressable>
+        )}
         
         {activeTab === 'Saved' && (
+          <>
+          {customPlaylists.length > 0 && (
+            <Pressable style={styles.dangerChip} onPress={handleClearPlaylists}>
+              <Ionicons name="trash-outline" size={14} color="#ff6b5a" style={{ marginRight: 4 }} />
+              <Text style={styles.dangerChipText}>전체 삭제</Text>
+            </Pressable>
+          )}
           <Pressable 
             style={[styles.sortChip, sortType === 'created' && styles.sortChipActive]}
             onPress={() => {
@@ -224,6 +451,7 @@ export default function LibraryScreen() {
               <Ionicons name={sortOrder === 'desc' ? 'arrow-down' : 'arrow-up'} size={14} color="#FF5A36" style={{marginLeft: 4}} />
             )}
           </Pressable>
+          </>
         )}
 
         <Pressable 
@@ -262,7 +490,13 @@ export default function LibraryScreen() {
           ref={flatListRef}
           data={sortedData}
           keyExtractor={(item) => item.id.toString()}
-          renderItem={activeTab === 'Pinned' ? renderPinnedItem : renderSavedItem}
+          renderItem={
+            activeTab === 'Pinned'
+              ? renderPinnedItem
+              : activeTab === 'Watched'
+                ? renderWatchedItem
+                : renderSavedItem
+          }
           contentContainerStyle={[styles.listContent, sortType === 'name' && { paddingRight: 40 }]} 
           showsVerticalScrollIndicator={sortType !== 'name'} 
           onScrollToIndexFailed={(info) => {
@@ -340,6 +574,8 @@ const styles = StyleSheet.create({
   sortChipActive: { backgroundColor: 'rgba(255, 90, 54, 0.1)', borderColor: '#FF5A36' },
   sortChipText: { color: '#aaa', fontSize: 13, fontWeight: 'bold' },
   sortChipTextActive: { color: '#FF5A36' },
+  dangerChip: { flexDirection: 'row', alignItems: 'center', backgroundColor: 'rgba(255, 69, 58, 0.1)', paddingVertical: 8, paddingHorizontal: 14, borderRadius: 16, borderWidth: 1, borderColor: '#6b2a24' },
+  dangerChipText: { color: '#ff6b5a', fontSize: 13, fontWeight: 'bold' },
 
   listWrapper: { flex: 1, flexDirection: 'row' },
   listContent: { paddingBottom: 100, paddingHorizontal: 20 },
