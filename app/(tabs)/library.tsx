@@ -19,6 +19,7 @@ import {
   fetchPlaylistsApi,
   updatePlaylistApi,
 } from '../../api/playlists';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 const MAIN_TABS = ['Pinned', 'Watched', 'Saved'];
 const INDEX_LETTERS = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ','A','F','K','P','U','Z'];
@@ -535,7 +536,7 @@ export default function LibraryScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>새 재생목록 추가</Text>
-            <TextInput style={styles.textInput} placeholder="목록 이름" placeholderTextColor="#666" value={newPlaylistName} onChangeText={setNewPlaylistName} autoFocus />
+            <TextInput style={styles.textInput} placeholder="목록 이름" placeholderTextColor="#666" value={newPlaylistName} onChangeText={setNewPlaylistName} autoFocus inputAccessoryViewID={KEYBOARD_ACCESSORY_ID} />
             <View style={styles.privacySelector}>
               <Pressable style={[styles.privacyOption, !isNewPlaylistPublic && styles.privacyOptionActive]} onPress={() => setIsNewPlaylistPublic(false)}>
                 <Ionicons name="lock-closed" size={20} color={!isNewPlaylistPublic ? "#FF5A36" : "#666"} />
@@ -550,6 +551,7 @@ export default function LibraryScreen() {
               <Pressable style={[styles.modalButton, styles.cancelButton]} onPress={() => setModalVisible(false)}><Text style={{color:'#fff', fontWeight: 'bold'}}>취소</Text></Pressable>
               <Pressable style={[styles.modalButton, styles.confirmButton]} onPress={handleCreatePlaylist}><Text style={{color:'#111', fontWeight: 'bold'}}>추가</Text></Pressable>
             </View>
+            <KeyboardAccessory />
           </View>
         </View>
       </Modal>

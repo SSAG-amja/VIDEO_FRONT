@@ -3,6 +3,7 @@ import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, St
 import { useRouter } from 'expo-router';
 
 import { updateUserPasswordApi } from '../api/user';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 
 export default function EditPasswordScreen() {
   const router = useRouter();
@@ -62,6 +63,7 @@ export default function EditPasswordScreen() {
           value={newPassword}
           onChangeText={setNewPassword}
           secureTextEntry
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
 
         <TextInput
@@ -71,6 +73,7 @@ export default function EditPasswordScreen() {
           value={newPasswordConfirm}
           onChangeText={setNewPasswordConfirm}
           secureTextEntry
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
 
         <Pressable
@@ -85,6 +88,7 @@ export default function EditPasswordScreen() {
           )}
         </Pressable>
       </View>
+      <KeyboardAccessory />
     </KeyboardAvoidingView>
   );
 }

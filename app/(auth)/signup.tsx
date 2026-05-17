@@ -5,6 +5,7 @@ import { signupApi } from '../../api/auth';
 import { Picker } from '@react-native-picker/picker';
 // 🟢 안드로이드 네이티브 피커를 위한 라이브러리 추가
 import DateTimePicker from '@react-native-community/datetimepicker';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 // --- 커스텀 데이트 피커 모달 컴포넌트 (iOS용 디자인 통일) ---
 interface DatePickerModalProps {
@@ -188,6 +189,7 @@ export default function SignupScreen() {
           onChangeText={setEmail}
           autoCapitalize="none"
           keyboardType="email-address"
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
         {isEmailError && <Text style={styles.errorText}>이메일 양식에 맞춰야 합니다.</Text>}
         
@@ -199,6 +201,7 @@ export default function SignupScreen() {
           value={password}
           onChangeText={setPassword}
           secureTextEntry
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
         {isPasswordError && <Text style={styles.errorText}>비밀번호는 8자 이상이어야 합니다.</Text>}
 
@@ -210,6 +213,7 @@ export default function SignupScreen() {
           value={passwordCheck}
           onChangeText={setPasswordCheck}
           secureTextEntry
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
         {isPasswordCheckError && <Text style={styles.errorText}>비밀번호가 다릅니다.</Text>}
 
@@ -220,6 +224,7 @@ export default function SignupScreen() {
           placeholderTextColor="#666"
           value={nickname}
           onChangeText={setNickname}
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
 
         {/* 🟢 생년월일 입력창 */}
@@ -280,6 +285,7 @@ export default function SignupScreen() {
           onChange={handleAndroidDateChange}
         />
       )}
+      <KeyboardAccessory />
     </KeyboardAvoidingView>
   );
 }

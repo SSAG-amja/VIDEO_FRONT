@@ -4,6 +4,7 @@ import { router, useFocusEffect } from 'expo-router';
 import { signoutApi, verifyPasswordApi } from '../api/auth';
 import { getUserProfileApi } from '../api/user';
 import * as SecureStore from 'expo-secure-store';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 
 // --- Types ---
 interface MenuButtonProps {
@@ -272,6 +273,7 @@ export default function Profile() {
               onChangeText={setCurrentPassword}
               secureTextEntry
               autoFocus
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
             <View style={styles.verifyActions}>
               <TouchableOpacity
@@ -294,6 +296,7 @@ export default function Profile() {
               </TouchableOpacity>
             </View>
           </View>
+          <KeyboardAccessory />
         </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>

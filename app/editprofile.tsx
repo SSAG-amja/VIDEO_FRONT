@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, Alert, ScrollView, Keyboa
 import { useRouter } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 
 // ⚠️ 위에서 추가한 API를 임포트합니다. 경로에 맞게 수정하세요.
 import { getUserProfileApi, updateUserProfileApi } from '../api/user';
@@ -232,6 +233,7 @@ export default function EditProfileScreen() {
           placeholderTextColor="#666" // 흐린 글씨
           value={nickname}
           onChangeText={setNickname}
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
 
         {/* 생년월일 입력창 */}
@@ -243,6 +245,7 @@ export default function EditProfileScreen() {
               placeholderTextColor="#666" // 흐린 글씨
               value={birthDate}
               editable={false}
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
             />
           </View>
         </Pressable>
@@ -301,6 +304,7 @@ export default function EditProfileScreen() {
           onChange={handleAndroidDateChange}
         />
       )}
+      <KeyboardAccessory />
     </KeyboardAvoidingView>
   );
 }

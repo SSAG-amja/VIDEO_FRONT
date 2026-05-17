@@ -3,6 +3,7 @@ import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-nativ
 import { useRouter } from 'expo-router';
 import { signinApi } from '../../api/auth';
 import * as SecureStore from 'expo-secure-store';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 export default function SigninScreen() {
   const [email, setEmail] = useState('');
@@ -41,6 +42,7 @@ export default function SigninScreen() {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
+        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
       />
       <TextInput
         style={styles.input}
@@ -49,6 +51,7 @@ export default function SigninScreen() {
         value={password}
         onChangeText={setPassword}
         secureTextEntry
+        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
       />
       <Pressable style={styles.button} onPress={handleSignin}>
         <Text style={styles.buttonText}>로그인</Text>
@@ -58,6 +61,7 @@ export default function SigninScreen() {
       <Pressable onPress={() => router.push('/signup')}>
         <Text style={styles.linkText}>계정이 없으신가요? 회원가입</Text>
       </Pressable>
+      <KeyboardAccessory />
     </View>
   );
 }

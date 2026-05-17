@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, TextInput, ScrollView, ImageBackground, Pressable, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TextInput, ScrollView, ImageBackground, Pressable, ActivityIndicator, Keyboard } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router } from 'expo-router';
 import { fetchSearchData, fetchRecommendData, SEARCH_PAGE_SIZE } from '../../api/explore'; 
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 const MOOD_TAGS = ['#대한민국 인기작', '#전세계 인기작', '#평점 높은 명작', '#도파민 폭발 액션', '#가볍게 웃기 좋은'];
 
@@ -168,7 +169,10 @@ export default function ExploreScreen() {
           placeholder="영화 제목, 배우, 감독 검색..."
           placeholderTextColor="#666"
           value={searchQuery}
-          onChangeText={setSearchQuery} 
+          onChangeText={setSearchQuery}
+          returnKeyType="done"
+          onSubmitEditing={Keyboard.dismiss}
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
         {searchQuery.length > 0 && (
           <Pressable onPress={() => setSearchQuery('')}>
@@ -176,6 +180,7 @@ export default function ExploreScreen() {
           </Pressable>
         )}
       </View>
+      <KeyboardAccessory />
 
       {searchQuery.trim() !== '' ? (
         <View style={{ flex: 1 }}>
@@ -206,6 +211,7 @@ export default function ExploreScreen() {
             contentContainerStyle={styles.gridScroll}
             onScroll={handleSearchScroll}
             scrollEventThrottle={400}
+            keyboardShouldPersistTaps="handled"
           >
             {isSearching ? (
               <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
@@ -236,7 +242,7 @@ export default function ExploreScreen() {
             </ScrollView>
           </View>
           
-          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.gridScroll}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={styles.gridScroll} keyboardShouldPersistTaps="handled">
             {isLoadingTags ? (
               <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
             ) : (

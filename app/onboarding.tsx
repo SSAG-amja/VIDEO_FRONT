@@ -6,6 +6,7 @@ import { Feather, Ionicons } from '@expo/vector-icons';
 // 💡 api 경로를 프로젝트 구조에 맞게 수정하세요 (예: ../api/explore 또는 ../../api/explore)
 import { fetchMoviesByGenres, fetchSearchData, SEARCH_PAGE_SIZE } from '../api/explore'; 
 import { getUserProfileApi, submitOnboardingApi } from '../api/user';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 
 const OTTS = [
   { id: 8, name: '넷플릭스' }, { id: 337, name: '디즈니 플러스' }, { id: 1883, name: '티빙' },
@@ -414,13 +415,14 @@ export default function OnboardingScreen() {
 
           <View style={styles.searchInputContainer}>
             <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
-            <TextInput style={styles.searchInput} placeholder="영화 제목 검색..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} autoFocus />
+            <TextInput style={styles.searchInput} placeholder="영화 제목 검색..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} autoFocus inputAccessoryViewID={KEYBOARD_ACCESSORY_ID} />
             {searchQuery.length > 0 && (
               <Pressable onPress={() => setSearchQuery('')}>
                 <Ionicons name="close-circle" size={20} color="#666" />
               </Pressable>
             )}
           </View>
+          <KeyboardAccessory />
 
           {isSearching ? (
             <ActivityIndicator size="large" color="#FF5A36" style={{ marginTop: 50 }} />
