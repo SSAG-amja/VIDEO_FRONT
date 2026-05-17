@@ -1,196 +1,246 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
   FlatList,
   Image,
-  ImageBackground,
-  ImageStyle,
+  Keyboard,
   KeyboardAvoidingView,
   Modal,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
-  StyleProp,
   Text,
   TextInput,
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router } from 'expo-router';
+import { router, useFocusEffect } from 'expo-router';
+
+import {
+  CommunityPost,
+  CommunityReply,
+  CreatePostPayload,
+  createPostApi,
+  createReplyApi,
+  deletePostApi,
+  deleteReplyApi,
+  fetchPostApi,
+  fetchPostsApi,
+  likePostApi,
+  MoviePreview,
+  unlikePostApi,
+  updatePostApi,
+  updateReplyApi,
+} from '../../api/posts';
+import PostWriteModal from '../../components/PostWriteModal';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 type FeedFilter = 'all' | 'playlist' | 'movie';
 type SortMode = 'popular' | 'latest';
 
-type MoviePreview = {
-  id: string;
-  title: string;
-  poster: string;
-};
-
-type CommunityPost = {
-  id: string;
-  type: 'playlist' | 'movie';
-  user: string;
-  handle: string;
-  time: string;
-  title: string;
-  content: string;
-  tag: string;
-  likes: number;
-  comments: number;
-  isLiked: boolean;
-  movie?: MoviePreview;
-  playlist?: {
-    title: string;
-    description: string;
-    saves: number;
-    movies: MoviePreview[];
-  };
-  commentList: { id: string; user: string; text: string }[];
-};
-
-const POSTERS = {
-  lalaland: 'https://image.tmdb.org/t/p/w500/7BsvSuDQuoqhWmU2fL7W2GOcZHU.jpg',
-  everything: 'https://image.tmdb.org/t/p/w500/w3LxiVYdWWRvEVdn5RYq6jIqkb1.jpg',
-  spirited: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
-  parasite: 'https://image.tmdb.org/t/p/w500/7BsvSuDQuoqhWmU2fL7W2GOcZHU.jpg',
-  avengers: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-  darkKnight: 'https://image.tmdb.org/t/p/w500/qJ2tW6WMUDux911r6m7haRef0WH.jpg',
-  pulpFiction: 'https://image.tmdb.org/t/p/w500/w3LxiVYdWWRvEVdn5RYq6jIqkb1.jpg',
-  interstellar: 'https://image.tmdb.org/t/p/w500/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg',
-};
-
-const FALLBACK_POSTERS = Object.values(POSTERS);
-
-function PosterImage({ uri, style, fallbackIndex = 0 }: { uri?: string; style: StyleProp<ImageStyle>; fallbackIndex?: number }) {
+// 2026.05.18 박현식
+// 포스터 로딩 실패 시 기본 이미지를 대신 표시한다.
+function PosterImage({ uri, style }: { uri?: string; style: any }) {
   const [hasError, setHasError] = useState(false);
-  const fallbackUri = FALLBACK_POSTERS[fallbackIndex % FALLBACK_POSTERS.length];
-
   return (
     <Image
-      source={{ uri: hasError || !uri ? fallbackUri : uri }}
+      source={{ uri: hasError || !uri ? 'https://via.placeholder.com/160x240?text=No+Image' : uri }}
       style={style}
       onError={() => setHasError(true)}
     />
   );
 }
 
-const MOCK_POSTS: CommunityPost[] = [
-  {
-    id: 'p1',
-    type: 'playlist',
-    user: '민서',
-    handle: '@movie_mins',
-    time: '12분 전',
-    title: '비 오는 밤의 영화',
-    content: '잔잔하지만 너무 처지지는 않는 영화만 골랐어요. 대사가 좋고 여운이 긴 작품 위주입니다.',
-    tag: '감성',
-    likes: 128,
-    comments: 24,
-    isLiked: false,
-    playlist: {
-      title: '비 오는 밤의 영화',
-      description: '잔잔한 드라마와 로맨스 8편',
-      saves: 47,
-      movies: [
-        { id: '313369', title: '라라랜드', poster: POSTERS.lalaland },
-        { id: '545611', title: '에브리씽 에브리웨어 올 앳 원스', poster: POSTERS.everything },
-        { id: '129', title: '센과 치히로의 행방불명', poster: POSTERS.spirited },
-      ],
-    },
-    commentList: [
-      { id: 'c1', user: '도윤', text: '이 플리 저장해뒀다가 금요일에 볼게요.' },
-      { id: 'c2', user: '혜린', text: '라라랜드 넣은 거 너무 좋다.' },
-    ],
-  },
-  {
-    id: 'p2',
-    type: 'movie',
-    user: '준호',
-    handle: '@bongnight',
-    time: '34분 전',
-    title: '기생충은 다시 봐도 장면 배치가 미쳤네요',
-    content: '처음에는 스토리만 봤는데, 다시 보니까 공간을 쓰는 방식이 훨씬 잘 보여요.',
-    tag: '다시보기',
-    likes: 94,
-    comments: 18,
-    isLiked: true,
-    movie: { id: '496243', title: '기생충', poster: POSTERS.parasite },
-    commentList: [
-      { id: 'c3', user: '서연', text: '저는 계단 연출 볼 때마다 감탄해요.' },
-      { id: 'c4', user: '태오', text: '이 영화는 해석글 읽고 다시 보면 더 재밌음.' },
-    ],
-  },
-  {
-    id: 'p3',
-    type: 'playlist',
-    user: '수아',
-    handle: '@action_room',
-    time: '1시간 전',
-    title: '친구들이랑 틀면 실패 없는 액션 모음',
-    content: '중간에 늘어지는 영화 빼고 바로 몰입되는 작품만 모았습니다. 팝콘용으로 추천.',
-    tag: '액션',
-    likes: 211,
-    comments: 31,
-    isLiked: false,
-    playlist: {
-      title: '도파민 액션 10선',
-      description: '초반부터 몰아치는 액션 영화',
-      saves: 86,
-      movies: [
-        { id: '299534', title: '어벤져스: 엔드게임', poster: POSTERS.avengers },
-        { id: '155', title: '다크 나이트', poster: POSTERS.darkKnight },
-        { id: '680', title: '펄프 픽션', poster: POSTERS.pulpFiction },
-      ],
-    },
-    commentList: [
-      { id: 'c5', user: '현우', text: '다크 나이트는 언제 봐도 실패가 없죠.' },
-      { id: 'c6', user: '민재', text: '매드맥스도 추가하면 딱일 듯.' },
-    ],
-  },
-  {
-    id: 'p4',
-    type: 'movie',
-    user: '유진',
-    handle: '@soundtracker',
-    time: '2시간 전',
-    title: '인터스텔라 OST는 극장에서 들어야 완성되는 듯',
-    content: '집에서 볼 때도 좋지만, 극장 사운드로 들으면 감정선이 완전히 달라져요.',
-    tag: 'OST',
-    likes: 76,
-    comments: 9,
-    isLiked: false,
-    movie: { id: '157336', title: '인터스텔라', poster: POSTERS.interstellar },
-    commentList: [
-      { id: 'c7', user: '지훈', text: '도킹 장면은 진짜 사운드가 절반.' },
-    ],
-  },
-];
-
 export default function CommunityScreen() {
   const [activeFilter, setActiveFilter] = useState<FeedFilter>('all');
   const [sortMode, setSortMode] = useState<SortMode>('popular');
   const [searchQuery, setSearchQuery] = useState('');
-  const [posts, setPosts] = useState(MOCK_POSTS);
+  const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [commentPost, setCommentPost] = useState<CommunityPost | null>(null);
+  const [commentText, setCommentText] = useState('');
+  const [editingReply, setEditingReply] = useState<CommunityReply | null>(null);
+  const [isReplySubmitting, setIsReplySubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isWriteOpen, setIsWriteOpen] = useState(false);
+  const [editingPost, setEditingPost] = useState<CommunityPost | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const isSearching = searchQuery.trim().length > 0;
-  const featuredPosts = posts.slice(0, 4);
+  // 2026.05.18 박현식
+  // 커뮤니티 게시물 목록을 API에서 불러와 화면 상태에 반영한다.
+  const loadPosts = useCallback(async () => {
+    try {
+      setIsLoading(true);
+      setPosts(await fetchPostsApi());
+    } catch (error) {
+      console.error('Post API Load Error:', error);
+      Alert.alert('오류', '게시물을 불러오지 못했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
+  useFocusEffect(
+    useCallback(() => {
+      loadPosts();
+    }, [loadPosts])
+  );
+
+  // 2026.05.18 박현식
+  // 목록과 댓글 모달에 떠 있는 동일 게시물 상태를 함께 갱신한다.
+  const syncPost = (updated: CommunityPost) => {
+    setPosts((current) => current.map((post) => (post.id === updated.id ? updated : post)));
+    setCommentPost((current) => (current?.id === updated.id ? updated : current));
+  };
+
+  // 2026.05.18 박현식
+  // 새 게시물 작성 모달을 생성 모드로 연다.
+  const openWriteModal = () => {
+    setEditingPost(null);
+    setIsWriteOpen(true);
+  };
+
+  // 2026.05.18 박현식
+  // 게시물 작성 API를 호출하고 성공 시 피드 맨 위에 추가한다.
+  const submitPost = async (payload: CreatePostPayload) => {
+    try {
+      setIsSubmitting(true);
+      const created = await createPostApi(payload);
+      setPosts((current) => [created, ...current]);
+      setIsWriteOpen(false);
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('Create Post API Error:', error);
+      Alert.alert('등록 실패', '게시물을 등록하지 못했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 2026.05.18 박현식
+  // 게시물 수정 API를 호출하고 성공 시 기존 카드 상태를 교체한다.
+  const submitEditPost = async (payload: CreatePostPayload) => {
+    if (!editingPost) return;
+    try {
+      setIsSubmitting(true);
+      const updated = await updatePostApi(editingPost.id, {
+        post_title: payload.post_title,
+        post_content: payload.post_content,
+        hashtags: payload.hashtags,
+      });
+      syncPost(updated);
+      setEditingPost(null);
+      setIsWriteOpen(false);
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('Update Post API Error:', error);
+      Alert.alert('수정 실패', '게시물을 수정하지 못했습니다.');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  // 2026.05.18 박현식
+  // 댓글 모달을 열고 게시물 상세 API로 최신 댓글 목록을 동기화한다.
+  const openComments = async (post: CommunityPost) => {
+    setCommentPost(post);
+    setCommentText('');
+    setEditingReply(null);
+    try {
+      const detail = await fetchPostApi(post.id);
+      syncPost(detail);
+    } catch (error) {
+      console.error('Fetch Post Detail For Replies Error:', error);
+    }
+  };
+
+  // 2026.05.18 박현식
+  // 댓글 작성 또는 수정 API를 호출한 뒤 모달 댓글 목록을 갱신한다.
+  const submitReply = async () => {
+    if (!commentPost) return;
+    const content = commentText.trim();
+    if (!content) {
+      Alert.alert('확인', '댓글 내용을 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsReplySubmitting(true);
+      const reply = editingReply
+        ? await updateReplyApi(commentPost.id, editingReply.id, { reply_content: content })
+        : await createReplyApi(commentPost.id, { reply_content: content });
+
+      const nextComments = editingReply
+        ? commentPost.commentList.map((item) => (item.id === reply.id ? reply : item))
+        : [...commentPost.commentList, reply];
+      const updatedPost = {
+        ...commentPost,
+        commentList: nextComments,
+        comments: editingReply ? commentPost.comments : commentPost.comments + 1,
+      };
+      syncPost(updatedPost);
+      setCommentText('');
+      setEditingReply(null);
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('Reply Submit API Error:', error);
+      Alert.alert(editingReply ? '수정 실패' : '등록 실패', '댓글을 저장하지 못했습니다.');
+    } finally {
+      setIsReplySubmitting(false);
+    }
+  };
+
+  // 2026.05.18 박현식
+  // 선택한 댓글 내용을 입력창에 올려 수정 모드로 전환한다.
+  const startEditReply = (reply: CommunityReply) => {
+    setEditingReply(reply);
+    setCommentText(reply.text);
+  };
+
+  // 2026.05.18 박현식
+  // 댓글 수정 모드를 해제하고 입력값을 초기화한다.
+  const cancelEditReply = () => {
+    setEditingReply(null);
+    setCommentText('');
+  };
+
+  // 2026.05.18 박현식
+  // 댓글 삭제 확인창을 띄우고 삭제 성공 시 화면 댓글 수를 보정한다.
+  const confirmDeleteReply = (reply: CommunityReply) => {
+    if (!commentPost) return;
+    Alert.alert('댓글 삭제', '댓글을 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deleteReplyApi(commentPost.id, reply.id);
+            const updatedPost = {
+              ...commentPost,
+              commentList: commentPost.commentList.filter((item) => item.id !== reply.id),
+              comments: Math.max(commentPost.comments - 1, 0),
+            };
+            syncPost(updatedPost);
+            if (editingReply?.id === reply.id) cancelEditReply();
+          } catch (error) {
+            console.error('Delete Reply API Error:', error);
+            Alert.alert('삭제 실패', '댓글을 삭제하지 못했습니다.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // 2026.05.18 박현식
+  // 필터, 검색어, 정렬 기준을 적용해 화면에 표시할 게시물 목록을 계산한다.
   const filteredPosts = useMemo(() => {
     const query = searchQuery.trim().toLowerCase();
     const filtered = posts.filter((post) => {
       if (activeFilter !== 'all' && post.type !== activeFilter) return false;
       if (!query) return true;
-      return [
-        post.title,
-        post.content,
-        post.user,
-        post.tag,
-        post.movie?.title,
-        post.playlist?.title,
-      ]
+      return [post.title, post.content, post.user, post.tag, post.movie?.title, post.playlist?.title, ...post.hashtags]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
@@ -199,16 +249,20 @@ export default function CommunityScreen() {
       if (sortMode === 'latest') {
         return posts.findIndex((post) => post.id === a.id) - posts.findIndex((post) => post.id === b.id);
       }
-      const score = (post: CommunityPost) => post.likes + post.comments * 3 + (post.playlist?.saves ?? 0) * 2;
-      return score(b) - score(a);
+      return b.likes + b.comments * 3 - (a.likes + a.comments * 3);
     });
   }, [activeFilter, posts, searchQuery, sortMode]);
 
-  const toggleFilter = (target: FeedFilter) => {
-    setActiveFilter((current) => (current === target ? 'all' : target));
-  };
+  const featuredPosts = posts.slice(0, 4);
+  const isSearching = searchQuery.trim().length > 0;
 
-  const toggleLike = (postId: string) => {
+  // 2026.05.18 박현식
+  // 좋아요 상태를 낙관적으로 바꾸고 서버 응답으로 최종 값을 보정한다.
+  const toggleLike = async (postId: string) => {
+    const target = posts.find((post) => post.id === postId);
+    if (!target) return;
+
+    const previous = posts;
     setPosts((current) =>
       current.map((post) =>
         post.id === postId
@@ -216,45 +270,93 @@ export default function CommunityScreen() {
           : post
       )
     );
+    setCommentPost((current) =>
+      current?.id === postId
+        ? { ...current, isLiked: !current.isLiked, likes: current.isLiked ? current.likes - 1 : current.likes + 1 }
+        : current
+    );
+
+    try {
+      const result = target.isLiked ? await unlikePostApi(postId) : await likePostApi(postId);
+      setPosts((current) =>
+        current.map((post) =>
+          post.id === postId
+            ? { ...post, likes: result.post_likes, isLiked: result.post_is_liked }
+            : post
+        )
+      );
+      setCommentPost((current) =>
+        current?.id === postId
+          ? { ...current, likes: result.post_likes, isLiked: result.post_is_liked }
+          : current
+      );
+    } catch (error) {
+      console.error('Post Like API Error:', error);
+      setPosts(previous);
+      setCommentPost((current) => (current?.id === postId ? target : current));
+      Alert.alert('오류', '좋아요 상태를 변경하지 못했습니다.');
+    }
   };
 
+  // 2026.05.18 박현식
+  // 커뮤니티 카드의 영화 미리보기에서 영화 상세 화면으로 이동한다.
   const openMovieDetail = (movie?: MoviePreview) => {
     if (!movie) return;
     router.push({
       pathname: '/detail/[id]',
       params: {
         id: movie.id,
-        movieData: JSON.stringify({
-          id: Number(movie.id),
-          title: movie.title,
-          posterPath: movie.poster.replace('https://image.tmdb.org/t/p/w500', ''),
-          overview: '상세 정보를 불러오는 중입니다...',
-        }),
+        movieData: JSON.stringify({ id: Number(movie.id), title: movie.title, posterPath: movie.posterPath }),
       },
     } as any);
   };
 
+  // 2026.05.18 박현식
+  // 게시물 삭제 확인창을 띄우고 삭제 실패 시 이전 목록으로 되돌린다.
+  const confirmDeletePost = (post: CommunityPost) => {
+    Alert.alert('게시물 삭제', '게시물을 삭제하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '삭제',
+        style: 'destructive',
+        onPress: async () => {
+          const previous = posts;
+          setPosts((current) => current.filter((item) => item.id !== post.id));
+          try {
+            await deletePostApi(post.id);
+          } catch (error) {
+            console.error('Delete Post API Error:', error);
+            setPosts(previous);
+            Alert.alert('삭제 실패', '게시물을 삭제하지 못했습니다.');
+          }
+        },
+      },
+    ]);
+  };
+
+  // 2026.05.18 박현식
+  // 내 게시물을 수정 모드로 열어 기존 내용을 작성 모달에 채운다.
+  const openEditPost = (post: CommunityPost) => {
+    setEditingPost(post);
+    setIsWriteOpen(true);
+  };
+
+  // 2026.05.18 박현식
+  // 공유 플레이리스트 카드에 들어갈 작은 포스터 묶음을 그린다.
   const renderMiniPosters = (movies: MoviePreview[]) => (
     <View style={styles.miniPosterRow}>
-      {movies.slice(0, 3).map((movie, index) => (
-        <PosterImage key={movie.id} uri={movie.poster} style={styles.miniPoster} fallbackIndex={index} />
+      {movies.slice(0, 3).map((movie) => (
+        <PosterImage key={movie.id} uri={movie.poster} style={styles.miniPoster} />
       ))}
     </View>
   );
 
-  const getPostCover = (post: CommunityPost) => post.playlist?.movies[0] ?? post.movie;
-  const getPostMovies = (post: CommunityPost) => post.playlist?.movies ?? (post.movie ? [post.movie] : []);
-
-  const renderFeaturedCard = (post: CommunityPost, index: number) => {
-    const cover = getPostCover(post);
-    const movies = getPostMovies(post);
+  // 2026.05.18 박현식
+  // 상단 가로 추천 영역의 게시물 카드를 렌더링한다.
+  const renderFeaturedCard = (post: CommunityPost) => {
+    const cover = post.playlist?.movies[0] ?? post.movie;
+    const movies = post.playlist?.movies ?? (post.movie ? [post.movie] : []);
     if (!cover) return null;
-
-    const label = post.type === 'playlist' ? '오늘 많이 저장한 플리' : '오늘 많이 본 영화';
-    const title = post.playlist?.title ?? post.movie?.title ?? post.title;
-    const meta = post.type === 'playlist'
-      ? `saved ${post.playlist?.saves ?? 0} · comments ${post.comments}`
-      : `watched ${post.likes} · comments ${post.comments}`;
 
     return (
       <Pressable
@@ -262,64 +364,53 @@ export default function CommunityScreen() {
         style={styles.featuredCard}
         onPress={() => (post.movie ? openMovieDetail(post.movie) : setActiveFilter('playlist'))}
       >
-        <ImageBackground source={{ uri: cover.poster }} style={styles.featuredImage} imageStyle={styles.featuredImageStyle}>
-          <View style={styles.featuredShade}>
-            <View style={styles.featuredPosterStack}>
-              {movies.slice(0, 4).map((movie, posterIndex) => (
-                <PosterImage
-                  key={movie.id}
-                  uri={movie.poster}
-                  fallbackIndex={index + posterIndex}
-                  style={[
-                    styles.featuredStackPoster,
-                    { right: posterIndex * 20, transform: [{ rotate: `${(posterIndex - 1) * 4}deg` }] },
-                  ]}
-                />
-              ))}
-            </View>
-            <View style={styles.featuredCopy}>
-              <Text style={styles.featuredLabel}>{label}</Text>
-              <Text style={styles.featuredTitle} numberOfLines={2}>{title}</Text>
-              <Text style={styles.featuredSub} numberOfLines={2}>{post.content}</Text>
-              <Text style={styles.featuredMeta}>{meta}</Text>
-            </View>
+        <Image source={{ uri: cover.poster }} style={styles.featuredImage} />
+        <View style={styles.featuredShade}>
+          <View style={styles.featuredPosterStack}>
+            {movies.slice(0, 4).map((movie, index) => (
+              <PosterImage key={movie.id} uri={movie.poster} style={[styles.featuredStackPoster, { right: index * 20 }]} />
+            ))}
           </View>
-        </ImageBackground>
+          <View style={styles.featuredCopy}>
+            <Text style={styles.featuredLabel}>{post.type === 'playlist' ? '공유 플레이리스트' : '영화 이야기'}</Text>
+            <Text style={styles.featuredTitle} numberOfLines={2}>{post.playlist?.title ?? post.movie?.title ?? post.title}</Text>
+            <Text style={styles.featuredSub} numberOfLines={2}>{post.content}</Text>
+          </View>
+        </View>
       </Pressable>
     );
   };
 
-  const renderFeatured = () => {
-    return (
-      <ScrollView
-        horizontal
-        showsHorizontalScrollIndicator={false}
-        snapToInterval={332}
-        decelerationRate="fast"
-        contentContainerStyle={styles.featuredRow}
-      >
-        {featuredPosts.map(renderFeaturedCard)}
-      </ScrollView>
-    );
-  };
-
+  // 2026.05.18 박현식
+  // 게시물 타입에 맞춰 영화 상세 또는 공유 플레이리스트 이동 미리보기를 렌더링한다.
   const renderContent = (post: CommunityPost) => {
     if (post.type === 'playlist' && post.playlist) {
       return (
-        <Pressable style={styles.playlistPreview}>
+        <Pressable
+          style={styles.playlistPreview}
+          onPress={() =>
+            router.push({
+              pathname: '/playlist/[id]',
+              params: {
+                id: post.playlist!.id,
+                sharedPlaylist: JSON.stringify(post.playlist),
+              },
+            } as any)
+          }
+        >
           {renderMiniPosters(post.playlist.movies)}
           <View style={styles.previewText}>
             <Text style={styles.previewTitle} numberOfLines={1}>{post.playlist.title}</Text>
-            <Text style={styles.previewSub} numberOfLines={1}>{post.playlist.description}</Text>
+            <Text style={styles.previewSub} numberOfLines={1}>플레이리스트</Text>
           </View>
-          <Ionicons name="bookmark-outline" size={20} color="#FF6B4A" />
+          <Ionicons name="chevron-forward" size={18} color="#666" />
         </Pressable>
       );
     }
 
     return (
       <Pressable style={styles.moviePreview} onPress={() => openMovieDetail(post.movie)}>
-        <PosterImage uri={post.movie?.poster} style={styles.moviePoster} fallbackIndex={3} />
+        <PosterImage uri={post.movie?.poster} style={styles.moviePoster} />
         <View style={styles.previewText}>
           <Text style={styles.previewTitle} numberOfLines={1}>{post.movie?.title}</Text>
           <Text style={styles.previewSub}>영화 이야기 보기</Text>
@@ -329,6 +420,8 @@ export default function CommunityScreen() {
     );
   };
 
+  // 2026.05.18 박현식
+  // 커뮤니티 피드의 단일 게시물 카드를 렌더링한다.
   const renderPost = ({ item }: { item: CommunityPost }) => (
     <View style={styles.postCard}>
       <View style={styles.postTop}>
@@ -337,9 +430,18 @@ export default function CommunityScreen() {
         </View>
         <View style={styles.author}>
           <Text style={styles.userName}>{item.user}</Text>
-          <Text style={styles.userMeta}>{item.handle} · {item.time}</Text>
+          <Text style={styles.userMeta}>{item.time}</Text>
         </View>
-        <Text style={styles.postTag}>#{item.tag}</Text>
+        {item.isMine && (
+          <View style={styles.ownerActions}>
+            <Pressable onPress={() => openEditPost(item)} style={styles.iconButton}>
+              <Ionicons name="create-outline" size={18} color="#aaa" />
+            </Pressable>
+            <Pressable onPress={() => confirmDeletePost(item)} style={styles.iconButton}>
+              <Ionicons name="trash-outline" size={18} color="#FF6B4A" />
+            </Pressable>
+          </View>
+        )}
       </View>
 
       <Text style={styles.postTitle}>{item.title}</Text>
@@ -351,13 +453,9 @@ export default function CommunityScreen() {
           <Ionicons name={item.isLiked ? 'heart' : 'heart-outline'} size={20} color={item.isLiked ? '#FF6B4A' : '#999'} />
           <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>{item.likes}</Text>
         </Pressable>
-        <Pressable style={styles.actionButton} onPress={() => setCommentPost(item)}>
+        <Pressable style={styles.actionButton} onPress={() => openComments(item)}>
           <Ionicons name="chatbubble-outline" size={18} color="#999" />
           <Text style={styles.actionText}>{item.comments}</Text>
-        </Pressable>
-        <View style={styles.actionSpacer} />
-        <Pressable style={styles.saveButton}>
-          <Text style={styles.saveButtonText}>{item.type === 'playlist' ? 'saved' : 'watched'}</Text>
         </Pressable>
       </View>
     </View>
@@ -373,60 +471,66 @@ export default function CommunityScreen() {
         <Ionicons name="search" size={18} color="#777" />
         <TextInput
           style={styles.searchInput}
-          placeholder="영화, 플리, 키워드 검색"
+          placeholder="영화, 플레이리스트, 해시태그 검색"
           placeholderTextColor="#666"
           value={searchQuery}
           onChangeText={setSearchQuery}
+          returnKeyType="done"
+          onSubmitEditing={Keyboard.dismiss}
+          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
-        {isSearching && (
+        {isSearching ? (
           <Pressable onPress={() => setSearchQuery('')}>
             <Ionicons name="close-circle" size={20} color="#666" />
           </Pressable>
-        )}
+        ) : null}
       </View>
 
-      <FlatList
-        data={filteredPosts}
-        renderItem={renderPost}
-        keyExtractor={(item) => item.id}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.feedContent}
-        ListHeaderComponent={
-          <>
-            {!isSearching && renderFeatured()}
-
-            <View style={styles.controlBar}>
-              <View style={styles.filterGroup}>
-                <Pressable
-                  style={[styles.filterButton, activeFilter === 'playlist' && styles.filterButtonActive]}
-                  onPress={() => toggleFilter('playlist')}
-                >
-                  <Text style={[styles.filterText, activeFilter === 'playlist' && styles.filterTextActive]}>플리만</Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.filterButton, activeFilter === 'movie' && styles.filterButtonActive]}
-                  onPress={() => toggleFilter('movie')}
-                >
-                  <Text style={[styles.filterText, activeFilter === 'movie' && styles.filterTextActive]}>영화만</Text>
-                </Pressable>
+      {isLoading ? (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B4A" />
+        </View>
+      ) : (
+        <FlatList
+          data={filteredPosts}
+          renderItem={renderPost}
+          keyExtractor={(item) => item.id}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.feedContent}
+          ListHeaderComponent={
+            <>
+              {!isSearching && (
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.featuredRow}>
+                  {featuredPosts.map(renderFeaturedCard)}
+                </ScrollView>
+              )}
+              <View style={styles.controlBar}>
+                <View style={styles.filterGroup}>
+                  <Pressable style={[styles.filterButton, activeFilter === 'playlist' && styles.filterButtonActive]} onPress={() => setActiveFilter(activeFilter === 'playlist' ? 'all' : 'playlist')}>
+                    <Text style={[styles.filterText, activeFilter === 'playlist' && styles.filterTextActive]}>플리만</Text>
+                  </Pressable>
+                  <Pressable style={[styles.filterButton, activeFilter === 'movie' && styles.filterButtonActive]} onPress={() => setActiveFilter(activeFilter === 'movie' ? 'all' : 'movie')}>
+                    <Text style={[styles.filterText, activeFilter === 'movie' && styles.filterTextActive]}>영화만</Text>
+                  </Pressable>
+                </View>
+                <View style={styles.sortGroup}>
+                  <Pressable onPress={() => setSortMode('popular')}>
+                    <Text style={[styles.sortText, sortMode === 'popular' && styles.sortTextActive]}>인기</Text>
+                  </Pressable>
+                  <Text style={styles.sortDivider}>·</Text>
+                  <Pressable onPress={() => setSortMode('latest')}>
+                    <Text style={[styles.sortText, sortMode === 'latest' && styles.sortTextActive]}>최신</Text>
+                  </Pressable>
+                </View>
               </View>
+            </>
+          }
+          ListEmptyComponent={<Text style={styles.emptyText}>조건에 맞는 게시물이 없습니다.</Text>}
+        />
+      )}
 
-              <View style={styles.sortGroup}>
-                <Pressable onPress={() => setSortMode('popular')}>
-                  <Text style={[styles.sortText, sortMode === 'popular' && styles.sortTextActive]}>인기</Text>
-                </Pressable>
-                <Text style={styles.sortDivider}>·</Text>
-                <Pressable onPress={() => setSortMode('latest')}>
-                  <Text style={[styles.sortText, sortMode === 'latest' && styles.sortTextActive]}>최신</Text>
-                </Pressable>
-              </View>
-            </View>
-          </>
-        }
-        ListEmptyComponent={<Text style={styles.emptyText}>조건에 맞는 게시글이 없습니다.</Text>}
-      />
-
-      <Pressable style={styles.fab} onPress={() => setIsWriteOpen(true)}>
+      <Pressable style={styles.fab} onPress={openWriteModal}>
         <Ionicons name="add" size={28} color="#fff" />
       </Pressable>
 
@@ -444,59 +548,96 @@ export default function CommunityScreen() {
             <FlatList
               data={commentPost?.commentList ?? []}
               keyExtractor={(item) => item.id}
+              keyboardShouldPersistTaps="handled"
               renderItem={({ item }) => (
                 <View style={styles.commentItem}>
                   <View style={styles.commentAvatar}>
                     <Text style={styles.commentAvatarText}>{item.user.slice(0, 1)}</Text>
                   </View>
                   <View style={styles.commentBody}>
-                    <Text style={styles.commentUser}>{item.user}</Text>
+                    <View style={styles.commentMetaRow}>
+                      <Text style={styles.commentUser}>{item.user}</Text>
+                      <Text style={styles.commentTime}>{item.time}</Text>
+                    </View>
                     <Text style={styles.commentText}>{item.text}</Text>
                   </View>
+                  {item.isMine && (
+                    <View style={styles.replyActions}>
+                      <Pressable onPress={() => startEditReply(item)} style={styles.replyActionButton}>
+                        <Ionicons name="create-outline" size={16} color="#aaa" />
+                      </Pressable>
+                      <Pressable onPress={() => confirmDeleteReply(item)} style={styles.replyActionButton}>
+                        <Ionicons name="trash-outline" size={16} color="#FF6B4A" />
+                      </Pressable>
+                    </View>
+                  )}
                 </View>
               )}
+              ListEmptyComponent={<Text style={styles.emptyText}>아직 댓글이 없습니다.</Text>}
             />
+            {editingReply && (
+              <View style={styles.editingReplyBar}>
+                <Text style={styles.editingReplyText}>댓글 수정 중</Text>
+                <Pressable onPress={cancelEditReply}>
+                  <Ionicons name="close-circle" size={18} color="#777" />
+                </Pressable>
+              </View>
+            )}
             <View style={styles.commentInputRow}>
-              <TextInput placeholder="댓글을 입력하세요" placeholderTextColor="#666" style={styles.commentInput} />
-              <Pressable style={styles.commentSubmit}>
-                <Text style={styles.commentSubmitText}>등록</Text>
+              <TextInput
+                style={styles.commentInput}
+                placeholder="댓글을 입력하세요"
+                placeholderTextColor="#666"
+                value={commentText}
+                onChangeText={setCommentText}
+                multiline
+                inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+              />
+              <Pressable
+                style={[styles.commentSubmit, isReplySubmitting && styles.commentSubmitDisabled]}
+                onPress={submitReply}
+                disabled={isReplySubmitting}
+              >
+                {isReplySubmitting ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name={editingReply ? 'checkmark' : 'send'} size={18} color="#fff" />
+                )}
               </Pressable>
             </View>
           </View>
+          <KeyboardAccessory />
         </KeyboardAvoidingView>
       </Modal>
 
-      <Modal visible={isWriteOpen} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsWriteOpen(false)}>
-        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.writeModal}>
-          <View style={styles.writeHeader}>
-            <Pressable onPress={() => setIsWriteOpen(false)}>
-              <Text style={styles.writeCancel}>취소</Text>
-            </Pressable>
-            <Text style={styles.writeTitle}>공유하기</Text>
-            <Pressable onPress={() => setIsWriteOpen(false)}>
-              <Text style={styles.writeSubmit}>등록</Text>
-            </Pressable>
-          </View>
-          <View style={styles.writeBody}>
-            <TextInput
-              style={styles.writeInput}
-              multiline
-              placeholder="어떤 영화나 플리를 추천하고 싶나요?"
-              placeholderTextColor="#666"
-            />
-            <View style={styles.shareTypeRow}>
-              <Pressable style={styles.shareType}>
-                <Ionicons name="albums-outline" size={20} color="#FF6B4A" />
-                <Text style={styles.shareTypeText}>플리</Text>
-              </Pressable>
-              <Pressable style={styles.shareType}>
-                <Ionicons name="film-outline" size={20} color="#FF6B4A" />
-                <Text style={styles.shareTypeText}>영화</Text>
-              </Pressable>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <PostWriteModal
+        visible={isWriteOpen}
+        title={editingPost ? '게시물 수정' : '공유하기'}
+        submitLabel={editingPost ? '수정' : '등록'}
+        submittingLabel={editingPost ? '수정 중' : '등록 중'}
+        initialType={editingPost?.type ?? 'movie'}
+        initialMovie={editingPost?.movie ?? null}
+        initialPlaylist={
+          editingPost?.playlist
+            ? {
+                id: editingPost.playlist.id,
+                title: editingPost.playlist.title,
+                movies: editingPost.playlist.movies,
+              }
+            : null
+        }
+        initialTitle={editingPost?.title ?? ''}
+        initialContent={editingPost?.content ?? ''}
+        initialHashtags={editingPost?.hashtags}
+        lockTarget={Boolean(editingPost)}
+        isSubmitting={isSubmitting}
+        onClose={() => {
+          setIsWriteOpen(false);
+          setEditingPost(null);
+        }}
+        onSubmit={editingPost ? submitEditPost : submitPost}
+      />
+      <KeyboardAccessory />
     </View>
   );
 }
@@ -507,22 +648,21 @@ const styles = StyleSheet.create({
   headerTitle: { color: '#fff', fontSize: 28, fontWeight: '900' },
   searchContainer: { flexDirection: 'row', alignItems: 'center', gap: 10, height: 44, marginHorizontal: 20, paddingHorizontal: 14, borderRadius: 14, backgroundColor: '#151515', borderWidth: 1, borderColor: '#242424' },
   searchInput: { flex: 1, color: '#fff', fontSize: 14 },
+  loadingContainer: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   feedContent: { paddingBottom: 110 },
   featuredRow: { paddingHorizontal: 20, paddingTop: 16, gap: 12 },
   featuredCard: { width: 320, height: 214, borderRadius: 18, overflow: 'hidden', backgroundColor: '#151515' },
-  featuredImage: { flex: 1 },
-  featuredImageStyle: { borderRadius: 18 },
-  featuredShade: { flex: 1, justifyContent: 'flex-end', padding: 18, backgroundColor: 'rgba(0,0,0,0.52)' },
+  featuredImage: { ...StyleSheet.absoluteFillObject, width: '100%', height: '100%' },
+  featuredShade: { flex: 1, justifyContent: 'flex-end', padding: 18, backgroundColor: 'rgba(0,0,0,0.58)' },
   featuredCopy: { width: '68%', zIndex: 2 },
   featuredLabel: { color: '#FFB199', fontSize: 12, fontWeight: '800', marginBottom: 8 },
-  featuredTitle: { color: '#fff', fontSize: 25, lineHeight: 31, fontWeight: '900', marginBottom: 8 },
+  featuredTitle: { color: '#fff', fontSize: 23, lineHeight: 29, fontWeight: '900', marginBottom: 8 },
   featuredSub: { color: '#ddd', fontSize: 13, lineHeight: 19 },
-  featuredMeta: { color: '#ddd', fontSize: 12, fontWeight: '700', marginTop: 14 },
   featuredPosterStack: { position: 'absolute', right: 14, bottom: 22, width: 132, height: 146 },
   featuredStackPoster: { position: 'absolute', bottom: 0, width: 76, height: 118, borderRadius: 10, backgroundColor: '#222', borderWidth: 1, borderColor: 'rgba(255,255,255,0.14)' },
   miniPosterRow: { flexDirection: 'row', alignItems: 'center', width: 88 },
   miniPoster: { width: 38, height: 56, borderRadius: 7, marginRight: -13, backgroundColor: '#222', borderWidth: 1, borderColor: '#101010' },
-  controlBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 16, marginBottom: 2 },
+  controlBar: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, marginTop: 16 },
   filterGroup: { flexDirection: 'row', gap: 8 },
   filterButton: { height: 34, paddingHorizontal: 13, borderRadius: 17, justifyContent: 'center', backgroundColor: '#151515', borderWidth: 1, borderColor: '#292929' },
   filterButtonActive: { backgroundColor: '#FF6B4A', borderColor: '#FF6B4A' },
@@ -539,7 +679,8 @@ const styles = StyleSheet.create({
   author: { flex: 1 },
   userName: { color: '#fff', fontSize: 14, fontWeight: '800' },
   userMeta: { color: '#777', fontSize: 12, marginTop: 2 },
-  postTag: { color: '#FF8B70', fontSize: 12, fontWeight: '800' },
+  ownerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
+  iconButton: { padding: 8 },
   postTitle: { color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 7 },
   postContent: { color: '#cfcfcf', fontSize: 14, lineHeight: 21, marginBottom: 13 },
   playlistPreview: { flexDirection: 'row', alignItems: 'center', minHeight: 76, padding: 10, borderRadius: 12, backgroundColor: '#191919', marginBottom: 13 },
@@ -552,35 +693,28 @@ const styles = StyleSheet.create({
   actionButton: { flexDirection: 'row', alignItems: 'center', gap: 6, marginRight: 18 },
   actionText: { color: '#999', fontSize: 13, fontWeight: '700' },
   actionTextActive: { color: '#FF6B4A' },
-  actionSpacer: { flex: 1 },
-  saveButton: { height: 31, paddingHorizontal: 12, borderRadius: 15, backgroundColor: '#211715', justifyContent: 'center' },
-  saveButtonText: { color: '#FF8B70', fontSize: 12, fontWeight: '800' },
   emptyText: { color: '#666', textAlign: 'center', marginTop: 40 },
   fab: { position: 'absolute', right: 20, bottom: 28, width: 56, height: 56, borderRadius: 28, backgroundColor: '#FF6B4A', justifyContent: 'center', alignItems: 'center', elevation: 6 },
   modalOverlay: { flex: 1, justifyContent: 'flex-end' },
-  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.62)' },
-  commentSheet: { height: '66%', backgroundColor: '#1a1a1a', borderTopLeftRadius: 20, borderTopRightRadius: 20, paddingHorizontal: 20, paddingBottom: Platform.OS === 'ios' ? 34 : 18 },
-  sheetHandle: { width: 42, height: 4, borderRadius: 2, backgroundColor: '#444', alignSelf: 'center', marginTop: 10, marginBottom: 16 },
-  commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 14, borderBottomWidth: 1, borderBottomColor: '#333' },
-  commentTitle: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  commentItem: { flexDirection: 'row', paddingVertical: 14 },
-  commentAvatar: { width: 31, height: 31, borderRadius: 16, backgroundColor: '#333', justifyContent: 'center', alignItems: 'center', marginRight: 11 },
-  commentAvatarText: { color: '#fff', fontSize: 12, fontWeight: '800' },
-  commentBody: { flex: 1 },
-  commentUser: { color: '#fff', fontSize: 13, fontWeight: '800', marginBottom: 3 },
-  commentText: { color: '#ccc', fontSize: 14, lineHeight: 20 },
-  commentInputRow: { flexDirection: 'row', alignItems: 'center', gap: 9, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#333' },
-  commentInput: { flex: 1, minHeight: 42, borderRadius: 21, backgroundColor: '#111', borderWidth: 1, borderColor: '#333', color: '#fff', paddingHorizontal: 14 },
-  commentSubmit: { paddingHorizontal: 15, height: 42, borderRadius: 21, backgroundColor: '#FF6B4A', justifyContent: 'center' },
-  commentSubmitText: { color: '#fff', fontSize: 13, fontWeight: '800' },
-  writeModal: { flex: 1, backgroundColor: '#0a0a0a' },
-  writeHeader: { height: 56, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#222' },
-  writeCancel: { color: '#aaa', fontSize: 15 },
-  writeTitle: { color: '#fff', fontSize: 17, fontWeight: '800' },
-  writeSubmit: { color: '#FF6B4A', fontSize: 15, fontWeight: '800' },
-  writeBody: { padding: 20 },
-  writeInput: { minHeight: 160, color: '#fff', fontSize: 15, lineHeight: 22, textAlignVertical: 'top', borderRadius: 12, backgroundColor: '#111', borderWidth: 1, borderColor: '#282828', padding: 14, marginBottom: 14 },
-  shareTypeRow: { flexDirection: 'row', gap: 10 },
-  shareType: { flex: 1, height: 50, borderRadius: 12, backgroundColor: '#111', borderWidth: 1, borderColor: '#282828', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  shareTypeText: { color: '#fff', fontSize: 14, fontWeight: '800' },
+  modalBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(0,0,0,0.45)' },
+  commentSheet: { maxHeight: '76%', minHeight: 360, backgroundColor: '#111', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: 18 },
+  sheetHandle: { alignSelf: 'center', width: 38, height: 4, borderRadius: 2, backgroundColor: '#333', marginBottom: 14 },
+  commentHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
+  commentTitle: { color: '#fff', fontSize: 18, fontWeight: '900' },
+  commentItem: { flexDirection: 'row', paddingVertical: 12 },
+  commentAvatar: { width: 32, height: 32, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: '#242424', marginRight: 10 },
+  commentAvatarText: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  commentBody: { flex: 1, minWidth: 0 },
+  commentMetaRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 4 },
+  commentUser: { color: '#fff', fontSize: 13, fontWeight: '800' },
+  commentTime: { color: '#777', fontSize: 11, fontWeight: '700' },
+  commentText: { color: '#cfcfcf', fontSize: 14, lineHeight: 20 },
+  replyActions: { flexDirection: 'row', alignItems: 'center', marginLeft: 6 },
+  replyActionButton: { padding: 6 },
+  editingReplyBar: { height: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#181818', borderWidth: 1, borderColor: '#282828', marginTop: 8 },
+  editingReplyText: { color: '#aaa', fontSize: 12, fontWeight: '800' },
+  commentInputRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 10, paddingTop: 12 },
+  commentInput: { flex: 1, maxHeight: 96, minHeight: 44, borderRadius: 14, paddingHorizontal: 14, paddingVertical: 11, color: '#fff', backgroundColor: '#181818', borderWidth: 1, borderColor: '#2a2a2a', fontSize: 14 },
+  commentSubmit: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FF6B4A' },
+  commentSubmitDisabled: { opacity: 0.55 },
 });

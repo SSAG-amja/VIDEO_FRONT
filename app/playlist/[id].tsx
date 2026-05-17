@@ -1,5 +1,5 @@
 // app/playlist/[id].tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   View, Text, StyleSheet, Image, Pressable, Alert, Modal, TextInput, 
   ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, ScrollView
@@ -15,11 +15,14 @@ import {
   fetchPlaylistMoviesApi,
 } from '../../api/playlistItems';
 import { deletePlaylistApi, updatePlaylistApi } from '../../api/playlists';
+import { CreatePostPayload, createPostApi } from '../../api/posts';
+import PostWriteModal from '../../components/PostWriteModal';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
 export default function PlaylistDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, sharedPlaylist } = useLocalSearchParams<{ id: string; sharedPlaylist?: string }>();
   
   const { 
     customPlaylists, 
@@ -33,7 +36,32 @@ export default function PlaylistDetailScreen() {
     updatePlaylistOrder 
   } = usePlaylistStore();
 
-  const playlist = customPlaylists.find(p => p.id.toString() === id);
+  // 2026.05.18 박현식
+  // 커뮤니티에서 넘어온 공유 플레이리스트 데이터를 상세 화면용 읽기 전용 구조로 변환한다.
+  const sharedPlaylistPreview = useMemo(() => {
+    if (!sharedPlaylist) return null;
+    try {
+      const parsed = JSON.parse(sharedPlaylist);
+      return {
+        id: String(parsed.id ?? id),
+        name: parsed.name ?? parsed.title ?? '공유 플레이리스트',
+        movies: (parsed.movies ?? []).map((movie: any) => ({
+          id: String(movie.id),
+          title: movie.title ?? movie.movie_title ?? '제목 없음',
+          image: movie.image ?? movie.poster ?? 'https://via.placeholder.com/150',
+        })),
+        movieCount: Number(parsed.movieCount ?? parsed.movies?.length ?? 0),
+        isPublic: true,
+      };
+    } catch (error) {
+      console.error('Shared Playlist Parse Error:', error);
+      return null;
+    }
+  }, [id, sharedPlaylist]);
+
+  const ownedPlaylist = customPlaylists.find(p => p.id.toString() === id);
+  const isSharedPreview = Boolean(sharedPlaylistPreview);
+  const playlist = sharedPlaylistPreview ?? ownedPlaylist;
 
   const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -71,7 +99,7 @@ export default function PlaylistDetailScreen() {
 
   useFocusEffect(
     useCallback(() => {
-      if (!id) return;
+      if (!id || isSharedPreview) return;
 
       let isActive = true;
       // 2026.05.13 박현식
@@ -94,7 +122,7 @@ export default function PlaylistDetailScreen() {
       return () => {
         isActive = false;
       };
-    }, [id, setPlaylistMovies])
+    }, [id, isSharedPreview, setPlaylistMovies])
   );
 
   if (!playlist) {
@@ -151,6 +179,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 플레이리스트에서 영화 하나를 삭제하고 백엔드 목록 API와 동기화한다.
   const handleRemoveMovie = (movieId: string, movieTitle: string) => {
+    if (isSharedPreview) return;
     Alert.alert(
       "영화 삭제",
       `'${movieTitle}' 영화를 목록에서 지우시겠습니까?`,
@@ -178,6 +207,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 영화 카드를 길게 눌렀을 때 다중 선택 모드로 진입하고 해당 영화를 선택한다.
   const enterSelectionMode = (movieId: string) => {
+    if (isSharedPreview) return;
     setIsSelectionMode(true);
     setSelectedMovieIds((prev) => (prev.includes(movieId) ? prev : [...prev, movieId]));
   };
@@ -185,6 +215,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 다중 선택 모드에서 영화 선택 상태를 토글하고 선택이 없으면 모드를 종료한다.
   const toggleMovieSelection = (movieId: string) => {
+    if (isSharedPreview) return;
     setSelectedMovieIds((prev) => {
       const next = prev.includes(movieId)
         ? prev.filter((id) => id !== movieId)
@@ -206,6 +237,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 선택한 여러 영화를 한 번에 플레이리스트에서 제거하고 실패한 경우 목록을 재동기화한다.
   const handleRemoveSelectedMovies = async () => {
+    if (isSharedPreview) return;
     if (selectedMovieIds.length === 0) return;
 
     const selectedCount = selectedMovieIds.length;
@@ -237,6 +269,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 검색한 영화를 현재 플레이리스트에 추가하고 백엔드에 저장한다.
   const handleAddMovieToPlaylist = async (apiMovie: any) => {
+    if (isSharedPreview) return;
     const imageUrl = apiMovie.image || (apiMovie.posterPath ? `https://image.tmdb.org/t/p/w500${apiMovie.posterPath}` : 'https://via.placeholder.com/150');
     const movieToAdd = { id: apiMovie.id.toString(), title: apiMovie.title, image: imageUrl, addedAt: new Date().toISOString() };
     addMovieToPlaylist(playlist.id, movieToAdd);
@@ -255,6 +288,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 현재 플레이리스트의 영화 목록 전체 삭제를 백엔드와 전역 상태에 반영한다.
   const handleClearPlaylistMovies = () => {
+    if (isSharedPreview) return;
     if (playlist.movies.length === 0) return;
 
     Alert.alert('목록 비우기', '이 플레이리스트의 모든 영화를 삭제하시겠습니까?', [
@@ -279,6 +313,8 @@ export default function PlaylistDetailScreen() {
     ]);
   };
 
+  // 2026.05.18 박현식
+  // 검색 결과 또는 공유 목록의 영화를 상세 화면으로 전달한다.
   const handleGoToDetail = (apiMovie: any) => {
     const imageUrl = apiMovie.image || (apiMovie.posterPath ? `https://image.tmdb.org/t/p/w500${apiMovie.posterPath}` : 'https://via.placeholder.com/150');
     const safeMovieData = { id: apiMovie.id, title: apiMovie.title, posterPath: apiMovie.posterPath || '', image: imageUrl, rating: apiMovie.rating || 0, overview: apiMovie.overview || "상세 정보를 불러오는 중입니다...", info: "탐색을 통해 진입했습니다.", tags: apiMovie.tags || [], cast: apiMovie.cast || [] };
@@ -287,13 +323,17 @@ export default function PlaylistDetailScreen() {
     router.push({ pathname: '/detail/[id]', params: { id: apiMovie.id, movieData: JSON.stringify(safeMovieData) } } as any);
   };
 
-  // 💡 글 작성 기능 핸들러
+  // 2026.05.18 박현식
+  // 플레이리스트 상세 화면 하단 토스트 문구를 잠시 표시한다.
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(''), 2000);
   };
 
+  // 2026.05.18 박현식
+  // 공개 플레이리스트만 커뮤니티 게시물 작성 모달로 연결한다.
   const handleWritePostPress = () => {
+    if (isSharedPreview) return;
     if (!playlist.isPublic) {
       Alert.alert(
         "비공개 재생목록",
@@ -304,21 +344,22 @@ export default function PlaylistDetailScreen() {
     setIsWriteModalVisible(true);
   };
 
-  const handleSubmitPost = () => {
-    if (!postContent.trim()) return showToast("내용을 입력해주세요.");
-    
-    // TODO: 백엔드 API 연동 (playlist.id와 작성 내용 전송)
-    
-    showToast("게시글이 등록되었습니다.");
-    setTimeout(() => {
+  // 2026.05.18 박현식
+  // 현재 플레이리스트를 태그한 커뮤니티 게시물 생성을 요청한다.
+  const handleSubmitPost = async (payload: CreatePostPayload) => {
+    try {
+      await createPostApi(payload);
+      showToast("게시물이 등록되었습니다.");
       setIsWriteModalVisible(false);
-      setPostContent('');
-      setPostTags('');
-    }, 1000);
+    } catch (error) {
+      console.error('Create Playlist Post Error:', error);
+      showToast("게시물을 등록하지 못했습니다.");
+    }
   };
 
   // 2026.05.13 박현식
   // 드래그 핸들, 다중 선택 토글, 삭제 액션을 포함한 플레이리스트 영화 카드를 렌더링한다.
+  // 공유 플레이리스트에서는 포스터와 제목만 보여주고 누르면 영화 상세로 이동한다.
   const renderMovieItem = ({ item, drag, isActive }: RenderItemParams<any>) => {
     const isSelected = selectedMovieIds.includes(item.id);
 
@@ -344,14 +385,16 @@ export default function PlaylistDetailScreen() {
               <Ionicons name={isSelected ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={isSelected ? '#FF5A36' : '#666'} />
             </Pressable>
           )}
-          <Pressable style={styles.dragHandle} onLongPress={drag} delayLongPress={120}>
-            <Ionicons name="reorder-two" size={24} color="#777" />
-          </Pressable>
+          {!isSharedPreview && (
+            <Pressable style={styles.dragHandle} onLongPress={drag} delayLongPress={120}>
+              <Ionicons name="reorder-two" size={24} color="#777" />
+            </Pressable>
+          )}
           <Image source={{ uri: item.image }} style={styles.movieImage} />
           <View style={styles.movieInfo}>
             <Text style={styles.movieTitle}>{item.title}</Text>
           </View>
-          {!isSelectionMode && (
+          {!isSharedPreview && !isSelectionMode && (
             <Pressable
               style={styles.deleteMovieButton}
               onPress={() => handleRemoveMovie(item.id, item.title)}
@@ -364,6 +407,8 @@ export default function PlaylistDetailScreen() {
     );
   };
 
+  // 2026.05.18 박현식
+  // 영화 검색 결과 한 줄과 상세보기/추가 드롭다운을 렌더링한다.
   const renderSearchItem = ({ item }: { item: any }) => {
     const isMenuOpen = activeMenuId === item.id;
     const imageUrl = item.image || (item.posterPath ? `https://image.tmdb.org/t/p/w500${item.posterPath}` : 'https://via.placeholder.com/150');
@@ -392,16 +437,20 @@ export default function PlaylistDetailScreen() {
     );
   };
 
+  // 2026.05.18 박현식
+  // 소유한 플레이리스트에서만 영화 추가와 목록 비우기 액션을 렌더링한다.
   const renderHeaderComponent = () => (
     <View>
-      <Pressable style={styles.addMovieCard} onPress={() => setIsSearchModalVisible(true)}>
-        <View style={styles.addMovieIconContainer}>
-          <Ionicons name="search" size={24} color="#FF5A36" />
-        </View>
-        <Text style={styles.addMovieText}>영화 검색하여 추가하기</Text>
-      </Pressable>
+      {!isSharedPreview && (
+        <Pressable style={styles.addMovieCard} onPress={() => setIsSearchModalVisible(true)}>
+          <View style={styles.addMovieIconContainer}>
+            <Ionicons name="search" size={24} color="#FF5A36" />
+          </View>
+          <Text style={styles.addMovieText}>영화 검색하여 추가하기</Text>
+        </Pressable>
+      )}
 
-      {playlist.movies.length > 0 && (
+      {!isSharedPreview && playlist.movies.length > 0 && (
         <Pressable style={styles.clearMoviesButton} onPress={handleClearPlaylistMovies}>
           <Ionicons name="trash-outline" size={18} color="#ff6b5a" />
           <Text style={styles.clearMoviesText}>목록 비우기</Text>
@@ -423,6 +472,8 @@ export default function PlaylistDetailScreen() {
           </Text>
           
           <View style={styles.headerActions}>
+            {isSharedPreview ? null : (
+            <>
             {isSelectionMode ? (
               <Pressable
                 style={[styles.iconButton, selectedMovieIds.length === 0 && { opacity: 0.35 }]}
@@ -450,12 +501,16 @@ export default function PlaylistDetailScreen() {
                 </Pressable>
               </>
             )}
+            </>
+            )}
           </View>
         </View>
 
         <DraggableFlatList
           data={playlist.movies}
-          onDragEnd={({ data }) => updatePlaylistOrder(playlist.id, data)}
+          onDragEnd={({ data }) => {
+            if (!isSharedPreview) updatePlaylistOrder(playlist.id, data);
+          }}
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderMovieItem}
           ListHeaderComponent={renderHeaderComponent}
@@ -480,7 +535,7 @@ export default function PlaylistDetailScreen() {
 
             <View style={styles.searchInputContainer}>
               <Ionicons name="search" size={20} color="#666" style={styles.searchIcon} />
-              <TextInput style={styles.searchInput} placeholder="영화 제목 검색..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} autoFocus />
+              <TextInput style={styles.searchInput} placeholder="영화 제목 검색..." placeholderTextColor="#666" value={searchQuery} onChangeText={setSearchQuery} autoFocus inputAccessoryViewID={KEYBOARD_ACCESSORY_ID} />
               {searchQuery.length > 0 && (
                 <Pressable onPress={() => setSearchQuery('')}>
                   <Ionicons name="close-circle" size={20} color="#666" />
@@ -507,14 +562,23 @@ export default function PlaylistDetailScreen() {
         </Modal>
 
         {/* --- 💡 글쓰기 모달 --- */}
-        <Modal visible={isWriteModalVisible} animationType="slide" presentationStyle="pageSheet">
+        <PostWriteModal
+          visible={isWriteModalVisible}
+          initialType="playlist"
+          initialPlaylist={playlist}
+          lockTarget
+          onClose={() => setIsWriteModalVisible(false)}
+          onSubmit={handleSubmitPost}
+        />
+
+        <Modal visible={false} animationType="slide" presentationStyle="pageSheet">
           <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.writeModalContainer}>
             <View style={styles.writeModalHeader}>
               <Pressable onPress={() => setIsWriteModalVisible(false)}>
                 <Text style={styles.writeModalCancelText}>취소</Text>
               </Pressable>
               <Text style={styles.writeModalTitle}>새 게시글</Text>
-              <Pressable onPress={handleSubmitPost}>
+              <Pressable onPress={() => undefined}>
                 <Text style={styles.writeModalSubmitText}>등록</Text>
               </Pressable>
             </View>
@@ -543,6 +607,7 @@ export default function PlaylistDetailScreen() {
                   value={postContent}
                   onChangeText={setPostContent}
                   autoFocus
+                  inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                 />
               </View>
 
@@ -556,6 +621,7 @@ export default function PlaylistDetailScreen() {
                     placeholderTextColor="#666"
                     value={postTags}
                     onChangeText={setPostTags}
+                    inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                   />
                 </View>
               </View>
@@ -566,6 +632,7 @@ export default function PlaylistDetailScreen() {
                 <Text style={styles.toastText}>{toastMessage}</Text>
               </View>
             )}
+            <KeyboardAccessory />
           </KeyboardAvoidingView>
         </Modal>
 

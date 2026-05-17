@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ImageBackground, ScrollView, 
   Pressable, Image, Animated, Dimensions, BackHandler,
-  Modal, Alert, TextInput, Linking, KeyboardAvoidingView, Platform 
+  Modal, Alert, TextInput, Linking, KeyboardAvoidingView, Platform, Keyboard
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -15,6 +15,9 @@ import { fetchMovieDetailData } from '../../api/movies';
 import { getUserOttsApi } from '../../api/user';
 import { saveMovieToPlaylistInteractionApi, watchMovieApi } from '../../api/library';
 import { createPlaylistApi, fetchPlaylistsApi } from '../../api/playlists';
+import { CreatePostPayload, createPostApi } from '../../api/posts';
+import PostWriteModal from '../../components/PostWriteModal';
+import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -97,6 +100,7 @@ export default function DetailScreen() {
 
   // 💡 커뮤니티 글 작성 관련 상태 관리 추가
   const [isWriteModalVisible, setIsWriteModalVisible] = useState(false);
+  const [postTitle, setPostTitle] = useState('');
   const [postContent, setPostContent] = useState('');
   const [postTags, setPostTags] = useState('');
   const [toastMessage, setToastMessage] = useState('');
@@ -216,17 +220,16 @@ export default function DetailScreen() {
   };
 
   // 💡 게시글 등록 함수
-  const handleSubmitPost = () => {
-    if (!postContent.trim()) return showToast("내용을 입력해주세요.");
-    
-    // TODO: 백엔드 API 연동 위치 (현재 movieDetail.id 와 내용 전송)
-    
-    showToast("게시글이 등록되었습니다.");
-    setTimeout(() => {
+  const handleSubmitPost = async (payload: CreatePostPayload) => {
+    try {
+      await createPostApi(payload);
+      showToast("게시물이 등록되었습니다.");
       setIsWriteModalVisible(false);
-      setPostContent('');
-      setPostTags('');
-    }, 1000);
+      Keyboard.dismiss();
+    } catch (error) {
+      console.error('Create Movie Post Error:', error);
+      showToast("게시물을 등록하지 못했습니다.");
+    }
   };
 
   if (!movieDetail) {
@@ -382,66 +385,19 @@ export default function DetailScreen() {
           </Pressable>
         </View>
 
-        {/* --- 💡 글쓰기 모달 --- */}
-        <Modal visible={isWriteModalVisible} animationType="slide" presentationStyle="pageSheet">
-          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.writeModalContainer}>
-            <View style={styles.writeModalHeader}>
-              <Pressable onPress={() => setIsWriteModalVisible(false)}>
-                <Text style={styles.modalCancelText}>취소</Text>
-              </Pressable>
-              <Text style={styles.writeModalTitle}>새 게시글</Text>
-              <Pressable onPress={handleSubmitPost}>
-                <Text style={styles.modalSubmitText}>등록</Text>
-              </Pressable>
-            </View>
-
-            <ScrollView style={styles.writeModalBody} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-              
-              {/* 이미 태그된 콘텐츠 정보 표시 */}
-              <View style={styles.selectedMovieBox}>
-                <Image source={{ uri: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}` }} style={styles.selectedMovieImage} />
-                <View style={styles.selectedMovieInfo}>
-                  <Text style={styles.selectedMovieTitle}>{movieDetail.title}</Text>
-                  <Text style={styles.selectedMovieLabel}>영화 태그됨</Text>
-                </View>
-              </View>
-
-              {/* 본문 입력창 */}
-              <View style={styles.inputSection}>
-                <TextInput
-                  style={styles.contentInput}
-                  placeholder="이 콘텐츠에 대한 생각을 자유롭게 남겨주세요."
-                  placeholderTextColor="#666"
-                  multiline
-                  maxLength={500}
-                  value={postContent}
-                  onChangeText={setPostContent}
-                  autoFocus
-                />
-              </View>
-
-              {/* 해시태그 입력창 */}
-              <View style={styles.inputSection}>
-                <View style={styles.tagInputWrapper}>
-                  <Ionicons name="pricetag-outline" size={18} color="#666" style={{ marginRight: 8 }} />
-                  <TextInput
-                    style={styles.tagInput}
-                    placeholder="해시태그 띄어쓰기로 구분 (예: #스릴러 #명작)"
-                    placeholderTextColor="#666"
-                    value={postTags}
-                    onChangeText={setPostTags}
-                  />
-                </View>
-              </View>
-            </ScrollView>
-
-            {toastMessage !== '' && (
-              <View style={styles.toastContainer}>
-                <Text style={styles.toastText}>{toastMessage}</Text>
-              </View>
-            )}
-          </KeyboardAvoidingView>
-        </Modal>
+        <PostWriteModal
+          visible={isWriteModalVisible}
+          initialType="movie"
+          initialMovie={{
+            id: movieDetail.id,
+            title: movieDetail.title,
+            image: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}`,
+            posterPath: movieDetail.posterPath,
+          }}
+          lockTarget
+          onClose={() => setIsWriteModalVisible(false)}
+          onSubmit={handleSubmitPost}
+        />
 
         {/* 기존 재생목록 모달 */}
         <Modal 
@@ -491,6 +447,8 @@ export default function DetailScreen() {
                       onChangeText={setNewPlaylistName}
                       autoFocus={true}
                       returnKeyType="done"
+                      onSubmitEditing={Keyboard.dismiss}
+                      inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
                     />
 
                     <View style={styles.privacySelector}>
@@ -522,6 +480,7 @@ export default function DetailScreen() {
                   </View>
                 )}
               </Pressable>
+              <KeyboardAccessory />
             </Pressable>
           </KeyboardAvoidingView>
         </Modal>
@@ -618,6 +577,7 @@ const styles = StyleSheet.create({
   selectedMovieTitle: { color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 4 },
   selectedMovieLabel: { color: '#aaa', fontSize: 13 },
   inputSection: { marginBottom: 20 },
+  titleInput: { color: '#fff', fontSize: 18, fontWeight: '700', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 15, height: 50, borderWidth: 1, borderColor: '#333' },
   contentInput: { color: '#fff', fontSize: 16, lineHeight: 24, textAlignVertical: 'top', minHeight: 150 },
   tagInputWrapper: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#1a1a1a', borderRadius: 12, paddingHorizontal: 15, height: 50, borderWidth: 1, borderColor: '#333' },
   tagInput: { flex: 1, color: '#FF5A36', fontSize: 14 },
