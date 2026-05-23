@@ -18,7 +18,7 @@ import {
   Alert,
 } from "react-native";
 import { WebView } from "react-native-webview";
-import { API_BASE_URL } from "../../constants/api";
+import client from "../../api/client";
 import { usePinStore } from "../../store/usePinStore";
 import { usePassedStore } from "../../store/usePassedStore"; 
 import { fetchPassedMoviesApi, fetchPinnedMoviesApi, passMovieApi, pinMovieApi } from "../../api/library";
@@ -514,8 +514,8 @@ export default function HomeFeedScreen() {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/movie_load/shorts?page=${pageNumber}`);
-      const data = await response.json();
+      const response = await client.get("/api/v1/movie_load/shorts", { params: { page: pageNumber } });
+      const data = response.data;
 
       if (data.movies && data.movies.length > 0) {
         const passedList = usePassedStore.getState().passedMovies;
