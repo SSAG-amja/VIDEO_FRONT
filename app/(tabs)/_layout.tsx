@@ -1,6 +1,6 @@
 import { Tabs, router, usePathname } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { Pressable, StyleSheet, View, Platform } from 'react-native';
+import { DeviceEventEmitter, Pressable, StyleSheet, View, Platform } from 'react-native';
 
 export default function TabLayout() {
   const pathname = usePathname();
@@ -33,6 +33,13 @@ export default function TabLayout() {
         {/* 1. 홈 피드 탭 */}
         <Tabs.Screen
           name="index"
+          listeners={{
+            tabPress: () => {
+              if (isHome) {
+                DeviceEventEmitter.emit('pinlm:home-refresh');
+              }
+            },
+          }}
           options={{
             title: '홈',
             tabBarIcon: ({ color, focused }) => (

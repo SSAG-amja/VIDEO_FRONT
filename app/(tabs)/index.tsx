@@ -7,6 +7,7 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
+  DeviceEventEmitter,
   Dimensions,
   FlatList,
   Image,
@@ -21,7 +22,13 @@ import { WebView } from "react-native-webview";
 import client from "../../api/client";
 import { usePinStore } from "../../store/usePinStore";
 import { usePassedStore } from "../../store/usePassedStore"; 
-import { fetchPassedMoviesApi, fetchPinnedMoviesApi, passMovieApi, pinMovieApi } from "../../api/library";
+import {
+  fetchPassedMoviesApi,
+  fetchPinnedMoviesApi,
+  fetchWatchedMoviesApi,
+  passMovieApi,
+  pinMovieApi,
+} from "../../api/library";
 
 const { width: WINDOW_WIDTH } = Dimensions.get("window");
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16);
@@ -460,6 +467,7 @@ export default function HomeFeedScreen() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [page, setPage] = useState<number>(1);
   const [isFetchingMore, setIsFetchingMore] = useState<boolean>(false);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
   const [activeIndex, setActiveIndex] = useState<number>(0);
   const [layoutHeight, setLayoutHeight] = useState<number>(0);
   const [isGlobalMuted, setIsGlobalMuted] = useState<boolean>(true);
@@ -471,6 +479,89 @@ export default function HomeFeedScreen() {
   const setPinnedMovies = usePinStore((state) => state.setPinnedMovies);
   const unpinMovie = usePinStore((state) => state.unpinMovie);
   const flatListRef = useRef<FlatList>(null);
+  const excludedMovieIdsRef = useRef<Set<number>>(new Set());
+  const didInitialRefreshRef = useRef(false);
+  const shuffleSeedRef = useRef<string>("");
+
+  const filterVisibleMovies = useCallback((items: Movie[], excludedIds = excludedMovieIdsRef.current) => {
+    return items.filter((movie) => !excludedIds.has(movie.id));
+  }, []);
+
+  const syncInteractionStores = useCallback(async () => {
+    const [pinned, passed, watched] = await Promise.all([
+      fetchPinnedMoviesApi(),
+      fetchPassedMoviesApi(),
+      fetchWatchedMoviesApi(),
+    ]);
+
+    setPinnedMovies(pinned);
+    setPassedMovies(passed);
+    excludedMovieIdsRef.current = new Set([
+      ...passed.map((movie: { id: number }) => movie.id),
+      ...watched.map((movie: { id: number }) => movie.id),
+    ]);
+
+    return excludedMovieIdsRef.current;
+  }, [setPassedMovies, setPinnedMovies]);
+
+  // 2026.06.04 김호영
+  // 홈 피드 refresh 세션마다 백엔드 추천 순서를 바꿀 seed를 생성한다.
+  const createShuffleSeed = useCallback(() => {
+    return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  }, []);
+
+  const fetchMovies = useCallback(async (pageNumber: number, excludedIds = excludedMovieIdsRef.current) => {
+    if (isFetchingMore && pageNumber !== 1) return;
+    try {
+      if (pageNumber === 1) setIsLoading(true);
+      else setIsFetchingMore(true);
+
+      const response = await client.get("/api/v1/movie_load/shorts", {
+        params: {
+          page: pageNumber,
+          shuffle_seed: shuffleSeedRef.current,
+        },
+      });
+      const data = response.data;
+
+      if (data.movies && data.movies.length > 0) {
+        const passedList = usePassedStore.getState().passedMovies;
+        const mergedExcludedIds = new Set([
+          ...Array.from(excludedIds),
+          ...passedList.map((movie) => movie.id),
+        ]);
+        const filteredMovies = filterVisibleMovies(data.movies, mergedExcludedIds);
+
+        setMovies((prevMovies) =>
+          pageNumber === 1 ? filteredMovies : [...prevMovies, ...filteredMovies],
+        );
+      } else if (pageNumber === 1) {
+        setMovies([]);
+      }
+    } catch (error) {
+      console.error("API Fetch Error:", error);
+    } finally {
+      setIsLoading(false);
+      setIsFetchingMore(false);
+    }
+  }, [filterVisibleMovies, isFetchingMore]);
+
+  const refreshFeed = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      shuffleSeedRef.current = createShuffleSeed();
+      flatListRef.current?.scrollToOffset({ offset: 0, animated: false });
+      setPage(1);
+      setActiveIndex(0);
+      const excludedIds = await syncInteractionStores();
+      await fetchMovies(1, excludedIds);
+    } catch (error) {
+      console.error("Home Feed Refresh Error:", error);
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [createShuffleSeed, fetchMovies, isRefreshing, syncInteractionStores]);
 
   useFocusEffect(
     useCallback(() => {
@@ -478,22 +569,18 @@ export default function HomeFeedScreen() {
 
       // 2026.05.13 박현식
       // 홈 피드 진입 시 Pin/Pass 전역 상태를 백엔드 기준으로 동기화한다.
-      const syncInteractionStores = async () => {
+      const syncAndFilterCurrentFeed = async () => {
         try {
-          const [pinned, passed] = await Promise.all([
-            fetchPinnedMoviesApi(),
-            fetchPassedMoviesApi(),
-          ]);
+          const excludedIds = await syncInteractionStores();
           if (isActiveScreen) {
-            setPinnedMovies(pinned);
-            setPassedMovies(passed);
+            setMovies((prev) => filterVisibleMovies(prev, excludedIds));
           }
         } catch (error) {
           console.error("Interaction Store Sync Error:", error);
         }
       };
 
-      syncInteractionStores();
+      syncAndFilterCurrentFeed();
 
       const timer = setTimeout(() => {
         if (isActiveScreen) setIsScreenFocused(true);
@@ -505,47 +592,27 @@ export default function HomeFeedScreen() {
         setIsScreenFocused(false);
         setIsGlobalMuted(true);
       };
-    }, [setPassedMovies, setPinnedMovies]),
+    }, [filterVisibleMovies, syncInteractionStores]),
   );
 
-  const fetchMovies = async (pageNumber: number) => {
-    if (isFetchingMore && pageNumber !== 1) return;
-    try {
-      if (pageNumber === 1) setIsLoading(true);
-      else setIsFetchingMore(true);
-
-      const response = await client.get("/api/v1/movie_load/shorts", { params: { page: pageNumber } });
-      const data = response.data;
-
-      if (data.movies && data.movies.length > 0) {
-        const passedList = usePassedStore.getState().passedMovies;
-        const filteredMovies = data.movies.filter(
-          (m: Movie) => !passedList.some((pm) => pm.id === m.id)
-        );
-
-        setMovies((prevMovies) =>
-          pageNumber === 1 ? filteredMovies : [...prevMovies, ...filteredMovies],
-        );
-      }
-    } catch (error) {
-      console.error("API Fetch Error:", error);
-    } finally {
-      setIsLoading(false);
-      setIsFetchingMore(false);
-    }
-  };
+  useEffect(() => {
+    if (didInitialRefreshRef.current) return;
+    didInitialRefreshRef.current = true;
+    refreshFeed();
+  }, [refreshFeed]);
 
   useEffect(() => {
-    fetchMovies(1);
-  }, []);
+    const subscription = DeviceEventEmitter.addListener('pinlm:home-refresh', refreshFeed);
+    return () => subscription.remove();
+  }, [refreshFeed]);
 
-  const loadMoreMovies = () => {
+  const loadMoreMovies = useCallback(() => {
     if (!isFetchingMore && !isLoading) {
       const nextPage = page + 1;
       setPage(nextPage);
       fetchMovies(nextPage);
     }
-  };
+  }, [fetchMovies, isFetchingMore, isLoading, page]);
 
   const onViewableItemsChanged = useCallback(({ viewableItems }: any) => {
     if (viewableItems.length > 0 && viewableItems[0].index !== null) {
@@ -568,14 +635,19 @@ export default function HomeFeedScreen() {
     setMovies((prev) => {
       return prev.filter((m) => m.id !== id);
     });
+    excludedMovieIdsRef.current.add(id);
     passMovie(passedPayload);
     unpinMovie(id);
+
+    if (movies.length - activeIndex <= 4) {
+      loadMoreMovies();
+    }
 
     passMovieApi(id).catch((error) => {
       console.error("Pass API Error:", error);
       Alert.alert("저장 실패", "관심없음 목록에 저장하지 못했습니다.");
     });
-  }, [movies, passMovie, unpinMovie]);
+  }, [activeIndex, loadMoreMovies, movies, passMovie, unpinMovie]);
 
   if (isLoading) {
     return (
@@ -615,6 +687,8 @@ export default function HomeFeedScreen() {
           getItemLayout={(data, index) => ({ length: layoutHeight, offset: layoutHeight * index, index })}
           onEndReached={loadMoreMovies}
           onEndReachedThreshold={0.5}
+          refreshing={isRefreshing}
+          onRefresh={refreshFeed}
           ListEmptyComponent={
             <View style={styles.loadingContainer}>
               <Text style={{ color: '#aaa', fontSize: 16 }}>모든 추천 영화를 확인했습니다.</Text>
