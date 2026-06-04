@@ -11,6 +11,7 @@ import {
   deleteWatchedMovieApi,
   fetchPinnedMoviesApi,
   fetchWatchedMoviesApi,
+  pinMovieApi,
 } from '../../api/library';
 import {
   clearPlaylistsApi,
@@ -41,7 +42,7 @@ export default function LibraryScreen() {
     togglePlaylistVisibility,
     updatePlaylist,
   } = usePlaylistStore();
-  const { pinnedMovies, unpinMovie, setPinnedMovies, clearPinnedMovies } = usePinStore();
+  const { pinnedMovies, pinMovie, unpinMovie, setPinnedMovies, clearPinnedMovies } = usePinStore();
 
   const [activeTab, setActiveTab] = useState('Pinned');
   const [isModalVisible, setModalVisible] = useState(false);
@@ -262,12 +263,24 @@ export default function LibraryScreen() {
 
   // 2026.05.13 박현식
   // 보관함에서 개별 Pin을 해제하고 백엔드 pinned 상태를 함께 갱신한다.
-  const handleUnpinMovie = (item: any) => {
+  const handleTogglePinnedMovie = (item: any) => {
+    const isCurrentlyPinned = pinnedMovies.some((movie: any) => movie.id === item.id);
+
+    if (!isCurrentlyPinned) {
+      pinMovie(item);
+      pinMovieApi(item.id).catch((error) => {
+        console.error('Pin API Error:', error);
+        unpinMovie(item.id);
+        Alert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
+      });
+      return;
+    }
+
     unpinMovie(item.id);
-    setDisplayPinned((prev) => prev.filter((movie: any) => movie.id !== item.id));
 
     deletePinnedMovieApi(item.id).catch((error) => {
       console.error('Unpin API Error:', error);
+      pinMovie(item);
       Alert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
     });
   };
@@ -348,7 +361,7 @@ export default function LibraryScreen() {
             {item.title}
           </Text>
         </View>
-        <Pressable style={styles.actionIcon} onPress={() => handleUnpinMovie(item)}>
+        <Pressable style={styles.actionIcon} onPress={() => handleTogglePinnedMovie(item)}>
           <Ionicons name={isCurrentlyPinned ? "heart" : "heart-outline"} size={22} color={isCurrentlyPinned ? "#FF5A36" : "#aaa"} />
         </Pressable>
       </Pressable>

@@ -13,7 +13,7 @@ import { usePlaylistStore } from '../../store/usePlaylistStore';
 import { usePinStore } from '../../store/usePinStore';
 import { fetchMovieDetailData } from '../../api/movies'; 
 import { getUserOttsApi } from '../../api/user';
-import { saveMovieToPlaylistInteractionApi, watchMovieApi } from '../../api/library';
+import { deletePinnedMovieApi, pinMovieApi, saveMovieToPlaylistInteractionApi, watchMovieApi } from '../../api/library';
 import { createPlaylistApi, fetchPlaylistsApi } from '../../api/playlists';
 import { CreatePostPayload, createPostApi } from '../../api/posts';
 import PostWriteModal from '../../components/PostWriteModal';
@@ -88,7 +88,8 @@ export default function DetailScreen() {
   const translateY = useRef(new Animated.Value(0)).current;
 
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
-  const togglePin = usePinStore((state) => state.togglePin);
+  const pinMovie = usePinStore((state) => state.pinMovie);
+  const unpinMovie = usePinStore((state) => state.unpinMovie);
   const isPinned = movieDetail ? pinnedMovies.some((m) => m.id === movieDetail.id) : false;
 
   const [isPlaylistModalVisible, setPlaylistModalVisible] = useState(false);
@@ -232,6 +233,37 @@ export default function DetailScreen() {
     }
   };
 
+  const handleTogglePin = async () => {
+    if (!movieDetail) return;
+
+    const moviePayload = {
+      id: movieDetail.id,
+      title: movieDetail.title,
+      image: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}`,
+    };
+
+    if (isPinned) {
+      unpinMovie(movieDetail.id);
+      try {
+        await deletePinnedMovieApi(movieDetail.id);
+      } catch (error) {
+        console.error('Unpin API Error:', error);
+        pinMovie(moviePayload);
+        Alert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
+      }
+      return;
+    }
+
+    pinMovie(moviePayload);
+    try {
+      await pinMovieApi(movieDetail.id);
+    } catch (error) {
+      console.error('Pin API Error:', error);
+      unpinMovie(movieDetail.id);
+      Alert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
+    }
+  };
+
   if (!movieDetail) {
     return (
       <View style={styles.loadingContainer}>
@@ -372,11 +404,7 @@ export default function DetailScreen() {
           
           <Pressable 
             style={[styles.pinButton, isPinned && styles.pinButtonActive]} 
-            onPress={() => movieDetail && togglePin({
-              id: movieDetail.id, 
-              title: movieDetail.title, 
-              image: `https://image.tmdb.org/t/p/w780${movieDetail.posterPath}`
-            })}
+            onPress={handleTogglePin}
           >
             <Ionicons name={isPinned ? "heart" : "heart-outline"} size={24} color={isPinned ? "#FF5A36" : "#fff"} style={{ marginRight: 8 }} />
             <Text style={[styles.pinButtonText, isPinned && { color: '#FF5A36' }]}>

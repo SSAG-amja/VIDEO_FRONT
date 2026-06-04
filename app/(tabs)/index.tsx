@@ -23,6 +23,7 @@ import client from "../../api/client";
 import { usePinStore } from "../../store/usePinStore";
 import { usePassedStore } from "../../store/usePassedStore"; 
 import {
+  deletePinnedMovieApi,
   fetchPassedMoviesApi,
   fetchPinnedMoviesApi,
   fetchWatchedMoviesApi,
@@ -115,9 +116,20 @@ const ShortsItem = ({
       image: `https://image.tmdb.org/t/p/w780${movie.posterPath}`,
     };
 
+    if (isPinned) {
+      unpinMovie(movie.id);
+      try {
+        await deletePinnedMovieApi(movie.id);
+      } catch (error) {
+        console.error("Unpin API Error:", error);
+        pinMovie(moviePayload);
+        Alert.alert("삭제 실패", "핀 보관함에서 삭제하지 못했습니다.");
+      }
+      return;
+    }
+
     pinMovie(moviePayload);
     unpassMovie(movie.id);
-
     try {
       await pinMovieApi(movie.id);
     } catch (error) {
