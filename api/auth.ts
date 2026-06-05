@@ -66,3 +66,42 @@ export const verifyPasswordApi = async (currentPassword: string) => {
   });
   return response.data;
 };
+
+// 2026.06.05 임재준
+// 비밀번호 재설정 전 가입된 이메일로 인증 코드를 발송한다.
+export const sendPasswordResetCodeApi = async (email: string) => {
+  const response = await client.post('/api/v1/auth/password-reset/send-code', {
+    email,
+  });
+  return response.data;
+};
+
+// 2026.06.05 임재준
+// 이메일로 받은 인증 코드를 서버에서 검증하고 비밀번호 재설정용 임시 토큰을 발급받는다.
+export const verifyPasswordResetCodeApi = async (
+  email: string,
+  code: string
+) => {
+  const response = await client.post('/api/v1/auth/password-reset/verify-code', {
+    email,
+    code,
+  });
+  return response.data;
+};
+
+// 2026.06.05 임재준
+// 비밀번호 재설정용 임시 토큰을 이용해 새 비밀번호로 변경을 요청한다.
+export const confirmPasswordResetApi = async (
+  email: string,
+  reset_token: string,
+  new_password: string,
+  new_password_confirm: string
+) => {
+  const response = await client.post('/api/v1/auth/password-reset/confirm', {
+    email,
+    reset_token,
+    new_password,
+    new_password_confirm,
+  });
+  return response.data;
+};
