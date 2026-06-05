@@ -48,7 +48,10 @@ export const updateUserProfileApi = async (updateData: {
 
 // 2026.05.13 박현식
 // 현재 비밀번호 인증 후 새 비밀번호를 백엔드에 전달해 해시 갱신을 요청한다.
+// 2026.06.05 임재준
+// 현재 비밀번호 검증 단계에서 발급받은 password_change_token을 함께 전달해 비밀번호 변경 권한을 검증한다.
 export const updateUserPasswordApi = async (passwordData: {
+  password_change_token: string;
   new_password: string;
   new_password_confirm: string;
 }) => {

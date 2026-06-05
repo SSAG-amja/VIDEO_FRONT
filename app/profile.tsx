@@ -126,33 +126,49 @@ export default function Profile() {
   };
 
   // 2026.05.13 박현식
-  // 민감한 계정 수정 화면 진입 전에 현재 비밀번호를 검증하고 대상 화면으로 이동한다.
-  const handleVerifyPassword = async () => {
-    if (!currentPassword.trim()) {
-      Alert.alert('알림', '현재 비밀번호를 입력해주세요.');
-      return;
+// 민감한 계정 수정 화면 진입 전에 현재 비밀번호를 검증하고 대상 화면으로 이동한다.
+// 2026.06.05 임재준
+// 비밀번호 수정 화면 진입 시 백엔드에서 발급한 비밀번호 변경용 임시 토큰을 함께 전달한다.
+const handleVerifyPassword = async () => {
+  if (!currentPassword.trim()) {
+    Alert.alert('알림', '현재 비밀번호를 입력해주세요.');
+    return;
+  }
+
+  try {
+    setIsVerifyingPassword(true);
+
+    const data = await verifyPasswordApi(currentPassword);
+    const passwordChangeToken = data?.password_change_token;
+
+    const target = verifyTarget;
+    setVerifyTarget(null);
+    setCurrentPassword('');
+
+    if (target === 'profile') {
+      router.push('/editprofile' as any);
     }
 
-    try {
-      setIsVerifyingPassword(true);
-      await verifyPasswordApi(currentPassword);
-      const target = verifyTarget;
-      setVerifyTarget(null);
-      setCurrentPassword('');
+    if (target === 'password') {
+      if (!passwordChangeToken) {
+        Alert.alert('오류', '비밀번호 변경 인증 토큰을 받지 못했습니다.');
+        return;
+      }
 
-      if (target === 'profile') {
-        router.push('/editprofile' as any);
-      }
-      if (target === 'password') {
-        router.push('/editpassword' as any);
-      }
-    } catch (error) {
-      console.error('Verify Password Error:', error);
-      Alert.alert('인증 실패', '현재 비밀번호가 일치하지 않습니다.');
-    } finally {
-      setIsVerifyingPassword(false);
+      router.push({
+        pathname: '/editpassword',
+        params: {
+          passwordChangeToken,
+        },
+      } as any);
     }
-  };
+  } catch (error) {
+    console.error('Verify Password Error:', error);
+    Alert.alert('인증 실패', '현재 비밀번호가 일치하지 않습니다.');
+  } finally {
+    setIsVerifyingPassword(false);
+  }
+};
 
   // 공통 메뉴 버튼 컴포넌트
   const MenuButton: React.FC<MenuButtonProps> = ({ title, onPress, isDestructive = false }) => (
