@@ -1,9 +1,24 @@
 import React, { useState, useMemo } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Modal } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  Pressable,
+  StyleSheet,
+  Alert,
+  ScrollView,
+  KeyboardAvoidingView,
+  Platform,
+  Modal,
+  ActivityIndicator,
+} from 'react-native';
 import { useRouter } from 'expo-router';
-import { signupApi } from '../../api/auth';
+import {
+  signupApi,
+  sendEmailCodeApi,
+  verifyEmailCodeApi,
+} from '../../api/auth';
 import { Picker } from '@react-native-picker/picker';
-// 🟢 안드로이드 네이티브 피커를 위한 라이브러리 추가
 import DateTimePicker from '@react-native-community/datetimepicker';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
@@ -15,19 +30,30 @@ interface DatePickerModalProps {
   initialDate?: string; // YYYY-MM-DD
 }
 
-const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, onConfirm, initialDate }) => {
+const DatePickerModal: React.FC<DatePickerModalProps> = ({
+  isVisible,
+  onClose,
+  onConfirm,
+  initialDate,
+}) => {
   const today = new Date();
-  
+
   const init = useMemo(() => {
     if (initialDate) {
       const parts = initialDate.split('-');
       return { year: parts[0], month: parts[1], day: parts[2] };
     }
-    const defaultDate = new Date(today.getFullYear() - 20, today.getMonth(), today.getDate());
+
+    const defaultDate = new Date(
+      today.getFullYear() - 20,
+      today.getMonth(),
+      today.getDate()
+    );
+
     return {
       year: String(defaultDate.getFullYear()),
       month: String(defaultDate.getMonth() + 1).padStart(2, '0'),
-      day: String(defaultDate.getDate()).padStart(2, '0')
+      day: String(defaultDate.getDate()).padStart(2, '0'),
     };
   }, [initialDate]);
 
@@ -40,13 +66,19 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
     return Array.from({ length: 101 }, (_, i) => String(currentYear - i));
   }, []);
 
-  const months = useMemo(() => Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')), []);
+  const months = useMemo(
+    () => Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, '0')),
+    []
+  );
 
   const days = useMemo(() => {
     const year = parseInt(selectedYear);
     const month = parseInt(selectedMonth);
-    const lastDay = new Date(year, month, 0).getDate(); 
-    return Array.from({ length: lastDay }, (_, i) => String(i + 1).padStart(2, '0'));
+    const lastDay = new Date(year, month, 0).getDate();
+
+    return Array.from({ length: lastDay }, (_, i) =>
+      String(i + 1).padStart(2, '0')
+    );
   }, [selectedYear, selectedMonth]);
 
   const handleConfirm = () => {
@@ -65,7 +97,7 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
               <Text style={styles.modalConfirmText}>확인</Text>
             </Pressable>
           </View>
-          
+
           <View style={styles.pickerContainer}>
             <Picker
               selectedValue={selectedYear}
@@ -73,7 +105,14 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
               style={[styles.picker, { flex: 1.4 }]}
               itemStyle={styles.pickerItem}
             >
-              {years.map(year => <Picker.Item key={year} label={`${year}년`} value={year} color="#fff" />)}
+              {years.map((year) => (
+                <Picker.Item
+                  key={year}
+                  label={`${year}년`}
+                  value={year}
+                  color="#fff"
+                />
+              ))}
             </Picker>
 
             <Picker
@@ -82,7 +121,14 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
               style={[styles.picker, { flex: 1 }]}
               itemStyle={styles.pickerItem}
             >
-              {months.map(month => <Picker.Item key={month} label={`${month}월`} value={month} color="#fff" />)}
+              {months.map((month) => (
+                <Picker.Item
+                  key={month}
+                  label={`${month}월`}
+                  value={month}
+                  color="#fff"
+                />
+              ))}
             </Picker>
 
             <Picker
@@ -91,7 +137,14 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
               style={[styles.picker, { flex: 1 }]}
               itemStyle={styles.pickerItem}
             >
-              {days.map(day => <Picker.Item key={day} label={`${day}일`} value={day} color="#fff" />)}
+              {days.map((day) => (
+                <Picker.Item
+                  key={day}
+                  label={`${day}일`}
+                  value={day}
+                  color="#fff"
+                />
+              ))}
             </Picker>
           </View>
         </Pressable>
@@ -106,12 +159,22 @@ const DatePickerModal: React.FC<DatePickerModalProps> = ({ isVisible, onClose, o
 
 export default function SignupScreen() {
   const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [signupToken, setSignupToken] = useState('');
+
+  const [isEmailCodeSent, setIsEmailCodeSent] = useState(false);
+  const [isEmailVerified, setIsEmailVerified] = useState(false);
+
+  const [isSendingCode, setIsSendingCode] = useState(false);
+  const [isVerifyingCode, setIsVerifyingCode] = useState(false);
+  const [isSigningUp, setIsSigningUp] = useState(false);
+
   const [password, setPassword] = useState('');
   const [passwordCheck, setPasswordCheck] = useState('');
   const [nickname, setNickname] = useState('');
-  const [birthDate, setBirthDate] = useState(''); 
+  const [birthDate, setBirthDate] = useState('');
   const [gender, setGender] = useState<'M' | 'F' | ''>('');
-  
+
   // 피커 가시성 상태 관리
   const [isIOSPickerVisible, setIsIOSPickerVisible] = useState(false);
   const [isAndroidPickerVisible, setIsAndroidPickerVisible] = useState(false);
@@ -122,27 +185,118 @@ export default function SignupScreen() {
   const isPasswordError = password !== '' && password.length < 8;
   const isPasswordCheckError = passwordCheck !== '' && password !== passwordCheck;
 
+  const getErrorMessage = (error: any, fallbackMessage: string) => {
+    return (
+      error?.response?.data?.detail ||
+      error?.response?.data?.message ||
+      fallbackMessage
+    );
+  };
+
+  const handleEmailChange = (text: string) => {
+    setEmail(text);
+
+    // 이메일이 바뀌면 기존 인증 상태 초기화
+    setEmailCode('');
+    setSignupToken('');
+    setIsEmailCodeSent(false);
+    setIsEmailVerified(false);
+  };
+
+  const handleSendEmailCode = async () => {
+    if (!email) {
+      Alert.alert('알림', '이메일을 입력해주세요.');
+      return;
+    }
+
+    if (isEmailError) {
+      Alert.alert('오류', '이메일 양식을 다시 확인해주세요.');
+      return;
+    }
+
+    try {
+      setIsSendingCode(true);
+
+      await sendEmailCodeApi(email);
+
+      setIsEmailCodeSent(true);
+      setIsEmailVerified(false);
+      setSignupToken('');
+
+      Alert.alert('성공', '인증 코드가 이메일로 발송되었습니다.');
+    } catch (error: any) {
+      console.error(error);
+      Alert.alert('오류', getErrorMessage(error, '인증 코드 발송에 실패했습니다.'));
+    } finally {
+      setIsSendingCode(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    if (!emailCode) {
+      Alert.alert('알림', '인증 코드를 입력해주세요.');
+      return;
+    }
+
+    try {
+      setIsVerifyingCode(true);
+
+      const result = await verifyEmailCodeApi(email, emailCode);
+
+      setSignupToken(result.signup_token);
+      setIsEmailVerified(true);
+
+      Alert.alert('성공', '이메일 인증이 완료되었습니다.');
+    } catch (error: any) {
+      console.error(error);
+      setSignupToken('');
+      setIsEmailVerified(false);
+      Alert.alert('오류', getErrorMessage(error, '인증 코드 확인에 실패했습니다.'));
+    } finally {
+      setIsVerifyingCode(false);
+    }
+  };
+
   const handleSignup = async () => {
     if (!email || !password || !passwordCheck || !nickname || !birthDate || !gender) {
       Alert.alert('알림', '모든 항목을 입력해주세요.');
       return;
     }
+
     if (isEmailError || isPasswordError || isPasswordCheckError) {
       Alert.alert('오류', '입력 양식을 다시 확인해주세요.');
       return;
     }
 
+    if (!isEmailVerified || !signupToken) {
+      Alert.alert('알림', '이메일 인증을 완료해주세요.');
+      return;
+    }
+
     try {
-      await signupApi(email, password, passwordCheck, nickname, birthDate, gender);
+      setIsSigningUp(true);
+
+      await signupApi(
+        email,
+        password,
+        passwordCheck,
+        nickname,
+        birthDate,
+        gender,
+        signupToken
+      );
+
       Alert.alert('성공', '가입되었습니다! 이제 로그인해주세요.');
-      router.replace('/(auth)/signin'); 
+      router.replace('/(auth)/signin');
     } catch (error: any) {
       console.error(error);
-      Alert.alert('오류', '회원가입에 실패했습니다.');
+      Alert.alert('오류', getErrorMessage(error, '회원가입에 실패했습니다.'));
+    } finally {
+      setIsSigningUp(false);
     }
   };
 
-  // 🟢 생년월일 클릭 시 운영체제 분기 처리
+  // 생년월일 클릭 시 운영체제 분기 처리
   const openDatePicker = () => {
     if (Platform.OS === 'android') {
       setIsAndroidPickerVisible(true);
@@ -151,13 +305,15 @@ export default function SignupScreen() {
     }
   };
 
-  // 🟢 안드로이드 데이트 피커 체인지 핸들러
+  // 안드로이드 데이트 피커 체인지 핸들러
   const handleAndroidDateChange = (event: any, selectedDate?: Date) => {
-    setIsAndroidPickerVisible(false); // 선택 후 바로 닫기
+    setIsAndroidPickerVisible(false);
+
     if (selectedDate && event.type !== 'dismissed') {
       const year = selectedDate.getFullYear();
       const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
       const day = String(selectedDate.getDate()).padStart(2, '0');
+
       setBirthDate(`${year}-${month}-${day}`);
     }
   };
@@ -168,31 +324,95 @@ export default function SignupScreen() {
       const [y, m, d] = birthDate.split('-');
       return new Date(Number(y), Number(m) - 1, Number(d));
     }
+
     const today = new Date();
     return new Date(today.getFullYear() - 20, today.getMonth(), today.getDate());
   };
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'} 
+    <KeyboardAvoidingView
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1, backgroundColor: '#0a0a0a' }}
     >
       <ScrollView contentContainerStyle={styles.container} showsVerticalScrollIndicator={false}>
         <Text style={styles.title}>회원가입</Text>
-        
+
         {/* 이메일 */}
-        <TextInput
-          style={[styles.input, isEmailError && styles.inputError]}
-          placeholder="이메일"
-          placeholderTextColor="#666"
-          value={email}
-          onChangeText={setEmail}
-          autoCapitalize="none"
-          keyboardType="email-address"
-          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
-        />
+        <View style={styles.emailRow}>
+          <TextInput
+            style={[
+              styles.input,
+              styles.emailInput,
+              isEmailError && styles.inputError,
+              isEmailVerified && styles.inputVerified,
+            ]}
+            placeholder="이메일"
+            placeholderTextColor="#666"
+            value={email}
+            onChangeText={handleEmailChange}
+            autoCapitalize="none"
+            keyboardType="email-address"
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+            editable={!isSendingCode && !isVerifyingCode && !isSigningUp}
+          />
+
+          <Pressable
+            style={[
+              styles.smallButton,
+              (isEmailError || !email || isSendingCode || isEmailVerified) &&
+                styles.smallButtonDisabled,
+            ]}
+            onPress={handleSendEmailCode}
+            disabled={isEmailError || !email || isSendingCode || isEmailVerified}
+          >
+            {isSendingCode ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
+              <Text style={styles.smallButtonText}>
+                {isEmailCodeSent ? '재발송' : '인증'}
+              </Text>
+            )}
+          </Pressable>
+        </View>
+
         {isEmailError && <Text style={styles.errorText}>이메일 양식에 맞춰야 합니다.</Text>}
-        
+
+        {isEmailVerified && (
+          <Text style={styles.successText}>이메일 인증이 완료되었습니다.</Text>
+        )}
+
+        {/* 이메일 인증 코드 */}
+        {isEmailCodeSent && !isEmailVerified && (
+          <View style={styles.emailCodeBox}>
+            <TextInput
+              style={[styles.input, styles.codeInput]}
+              placeholder="인증 코드 입력"
+              placeholderTextColor="#666"
+              value={emailCode}
+              onChangeText={setEmailCode}
+              autoCapitalize="none"
+              keyboardType="number-pad"
+              inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+              editable={!isVerifyingCode && !isSigningUp}
+            />
+
+            <Pressable
+              style={[
+                styles.verifyButton,
+                (!emailCode || isVerifyingCode) && styles.smallButtonDisabled,
+              ]}
+              onPress={handleVerifyEmailCode}
+              disabled={!emailCode || isVerifyingCode}
+            >
+              {isVerifyingCode ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Text style={styles.verifyButtonText}>인증 코드 확인</Text>
+              )}
+            </Pressable>
+          </View>
+        )}
+
         {/* 비밀번호 */}
         <TextInput
           style={[styles.input, isPasswordError && styles.inputError]}
@@ -227,7 +447,7 @@ export default function SignupScreen() {
           inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
         />
 
-        {/* 🟢 생년월일 입력창 */}
+        {/* 생년월일 입력창 */}
         <Pressable onPress={openDatePicker}>
           <View pointerEvents="none">
             <TextInput
@@ -242,32 +462,48 @@ export default function SignupScreen() {
 
         {/* 성별 */}
         <View style={styles.genderContainer}>
-          <Pressable 
-            style={[styles.genderButton, gender === 'M' && styles.genderButtonActive]} 
+          <Pressable
+            style={[styles.genderButton, gender === 'M' && styles.genderButtonActive]}
             onPress={() => setGender('M')}
           >
-            <Text style={[styles.genderText, gender === 'M' && styles.genderTextActive]}>남성</Text>
+            <Text style={[styles.genderText, gender === 'M' && styles.genderTextActive]}>
+              남성
+            </Text>
           </Pressable>
-          <Pressable 
-            style={[styles.genderButton, gender === 'F' && styles.genderButtonActive]} 
+
+          <Pressable
+            style={[styles.genderButton, gender === 'F' && styles.genderButtonActive]}
             onPress={() => setGender('F')}
           >
-            <Text style={[styles.genderText, gender === 'F' && styles.genderTextActive]}>여성</Text>
+            <Text style={[styles.genderText, gender === 'F' && styles.genderTextActive]}>
+              여성
+            </Text>
           </Pressable>
         </View>
 
-        <Pressable style={styles.button} onPress={handleSignup}>
-          <Text style={styles.buttonText}>가입하기</Text>
+        <Pressable
+          style={[
+            styles.button,
+            (!isEmailVerified || isSigningUp) && styles.buttonDisabled,
+          ]}
+          onPress={handleSignup}
+          disabled={!isEmailVerified || isSigningUp}
+        >
+          {isSigningUp ? (
+            <ActivityIndicator size="small" color="#fff" />
+          ) : (
+            <Text style={styles.buttonText}>가입하기</Text>
+          )}
         </Pressable>
-        
+
         <Pressable onPress={() => router.push('/(auth)/signin')} style={styles.linkContainer}>
           <Text style={styles.linkText}>이미 계정이 있나요? 로그인</Text>
         </Pressable>
       </ScrollView>
 
-      {/* 🟢 커스텀 데이트 피커 모달 (iOS 전용) */}
+      {/* 커스텀 데이트 피커 모달 (iOS 전용) */}
       {Platform.OS === 'ios' && (
-        <DatePickerModal 
+        <DatePickerModal
           isVisible={isIOSPickerVisible}
           onClose={() => setIsIOSPickerVisible(false)}
           onConfirm={(dateString) => setBirthDate(dateString)}
@@ -275,47 +511,234 @@ export default function SignupScreen() {
         />
       )}
 
-      {/* 🟢 안드로이드 네이티브 피커 (Android 전용) */}
+      {/* 안드로이드 네이티브 피커 (Android 전용) */}
       {Platform.OS === 'android' && isAndroidPickerVisible && (
         <DateTimePicker
           value={getAndroidInitialDate()}
           mode="date"
-          display="spinner" // 'calendar'로 변경하면 달력 UI로 나옵니다.
-          maximumDate={new Date()} // 오늘 이후 날짜 선택 방지
+          display="spinner"
+          maximumDate={new Date()}
           onChange={handleAndroidDateChange}
         />
       )}
+
       <KeyboardAccessory />
     </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flexGrow: 1, justifyContent: 'center', padding: 20, paddingVertical: 40 },
-  title: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 30 },
-  input: { backgroundColor: '#1a1a1a', color: '#fff', padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#333', fontSize: 16 },
-  inputError: { borderColor: '#FF3B30', marginBottom: 5 },
-  errorText: { color: '#FF3B30', fontSize: 12, marginBottom: 15, marginLeft: 5 },
-  
-  genderContainer: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 20 },
-  genderButton: { flex: 0.48, backgroundColor: '#1a1a1a', padding: 15, borderRadius: 12, borderWidth: 1, borderColor: '#333', alignItems: 'center' },
-  genderButtonActive: { backgroundColor: 'rgba(255, 90, 54, 0.2)', borderColor: '#FF5A36' },
-  genderText: { color: '#666', fontSize: 16, fontWeight: 'bold' },
-  genderTextActive: { color: '#FF5A36' },
+  container: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 20,
+    paddingVertical: 40,
+  },
 
-  button: { backgroundColor: '#FF5A36', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  
-  linkContainer: { marginTop: 20, padding: 10 },
-  linkText: { color: '#aaa', textAlign: 'center', fontSize: 14 },
+  title: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 30,
+  },
 
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-  modalContent: { backgroundColor: '#1a1a1a', borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, paddingBottom: Platform.OS === 'ios' ? 40 : 20, borderTopWidth: 1, borderColor: '#333' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 },
-  modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold' },
-  modalConfirmText: { color: '#FF5A36', fontSize: 18, fontWeight: 'bold' },
-  
-  pickerContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  picker: { flex: 1, height: Platform.OS === 'ios' ? 216 : 150, color: '#fff' },
-  pickerItem: { fontSize: 20, color: '#fff' }, 
+  input: {
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#333',
+    fontSize: 16,
+  },
+
+  inputError: {
+    borderColor: '#FF3B30',
+    marginBottom: 5,
+  },
+
+  inputVerified: {
+    borderColor: '#34C759',
+  },
+
+  errorText: {
+    color: '#FF3B30',
+    fontSize: 12,
+    marginBottom: 15,
+    marginLeft: 5,
+  },
+
+  successText: {
+    color: '#34C759',
+    fontSize: 12,
+    marginBottom: 15,
+    marginLeft: 5,
+  },
+
+  emailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+
+  emailInput: {
+    flex: 1,
+  },
+
+  smallButton: {
+    width: 82,
+    height: 52,
+    backgroundColor: '#FF5A36',
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+
+  smallButtonDisabled: {
+    backgroundColor: '#555',
+  },
+
+  smallButtonText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+
+  emailCodeBox: {
+    marginBottom: 5,
+  },
+
+  codeInput: {
+    marginBottom: 10,
+  },
+
+  verifyButton: {
+    backgroundColor: 'rgba(255, 90, 54, 0.2)',
+    borderColor: '#FF5A36',
+    borderWidth: 1,
+    padding: 15,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: 15,
+  },
+
+  verifyButtonText: {
+    color: '#FF5A36',
+    fontSize: 15,
+    fontWeight: 'bold',
+  },
+
+  genderContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 20,
+  },
+
+  genderButton: {
+    flex: 0.48,
+    backgroundColor: '#1a1a1a',
+    padding: 15,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#333',
+    alignItems: 'center',
+  },
+
+  genderButtonActive: {
+    backgroundColor: 'rgba(255, 90, 54, 0.2)',
+    borderColor: '#FF5A36',
+  },
+
+  genderText: {
+    color: '#666',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+
+  genderTextActive: {
+    color: '#FF5A36',
+  },
+
+  button: {
+    backgroundColor: '#FF5A36',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+
+  buttonDisabled: {
+    backgroundColor: '#555',
+  },
+
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+
+  linkContainer: {
+    marginTop: 20,
+    padding: 10,
+  },
+
+  linkText: {
+    color: '#aaa',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.7)',
+    justifyContent: 'flex-end',
+  },
+
+  modalContent: {
+    backgroundColor: '#1a1a1a',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    borderTopWidth: 1,
+    borderColor: '#333',
+  },
+
+  modalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+
+  modalTitle: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+
+  modalConfirmText: {
+    color: '#FF5A36',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+
+  pickerContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+
+  picker: {
+    flex: 1,
+    height: Platform.OS === 'ios' ? 216 : 150,
+    color: '#fff',
+  },
+
+  pickerItem: {
+    fontSize: 20,
+    color: '#fff',
+  },
 });

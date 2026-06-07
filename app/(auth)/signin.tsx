@@ -13,13 +13,13 @@ export default function SigninScreen() {
   const handleSignin = async () => {
     try {
       const data = await signinApi(email, password);
-      
+
       if (data && data.access_token) {
         await SecureStore.setItemAsync('userToken', data.access_token);
       }
 
       Alert.alert('성공', '로그인 되었습니다.');
-      
+
       // 온보딩 완료 여부에 따라 화면 이동 분기
       if (data.is_onboarding_completed) {
         router.replace('/(tabs)');
@@ -35,6 +35,7 @@ export default function SigninScreen() {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>로그인</Text>
+
       <TextInput
         style={styles.input}
         placeholder="이메일"
@@ -42,8 +43,10 @@ export default function SigninScreen() {
         value={email}
         onChangeText={setEmail}
         autoCapitalize="none"
+        keyboardType="email-address"
         inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
       />
+
       <TextInput
         style={styles.input}
         placeholder="비밀번호"
@@ -53,24 +56,77 @@ export default function SigninScreen() {
         secureTextEntry
         inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
       />
+
       <Pressable style={styles.button} onPress={handleSignin}>
         <Text style={styles.buttonText}>로그인</Text>
       </Pressable>
-      
+
+      {/* 비밀번호 재설정 페이지로 이동 */}
+      <Pressable onPress={() => router.push('/passwordreset')}>
+        <Text style={styles.forgotPasswordText}>비밀번호를 잊으셨나요?</Text>
+      </Pressable>
+
       {/* 회원가입 페이지로 이동 */}
       <Pressable onPress={() => router.push('/signup')}>
         <Text style={styles.linkText}>계정이 없으신가요? 회원가입</Text>
       </Pressable>
+
       <KeyboardAccessory />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0a', justifyContent: 'center', padding: 20 },
-  title: { color: '#fff', fontSize: 28, fontWeight: 'bold', marginBottom: 30 },
-  input: { backgroundColor: '#1a1a1a', color: '#fff', padding: 15, borderRadius: 12, marginBottom: 15, borderWidth: 1, borderColor: '#333' },
-  button: { backgroundColor: '#FF5A36', padding: 18, borderRadius: 12, alignItems: 'center', marginTop: 10 },
-  buttonText: { color: '#fff', fontSize: 16, fontWeight: 'bold' },
-  linkText: { color: '#aaa', textAlign: 'center', marginTop: 20, fontSize: 14 },
+  container: {
+    flex: 1,
+    backgroundColor: '#0a0a0a',
+    justifyContent: 'center',
+    padding: 20,
+  },
+
+  title: {
+    color: '#fff',
+    fontSize: 28,
+    fontWeight: 'bold',
+    marginBottom: 30,
+  },
+
+  input: {
+    backgroundColor: '#1a1a1a',
+    color: '#fff',
+    padding: 15,
+    borderRadius: 12,
+    marginBottom: 15,
+    borderWidth: 1,
+    borderColor: '#333',
+  },
+
+  button: {
+    backgroundColor: '#FF5A36',
+    padding: 18,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginTop: 10,
+  },
+
+  buttonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+
+  forgotPasswordText: {
+    color: '#FF5A36',
+    textAlign: 'center',
+    marginTop: 16,
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  linkText: {
+    color: '#aaa',
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 14,
+  },
 });

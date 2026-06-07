@@ -1,19 +1,44 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import {
+  ActivityIndicator,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
 
 import { updateUserPasswordApi } from '../api/user';
-import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
+import KeyboardAccessory, {
+  KEYBOARD_ACCESSORY_ID,
+} from '../components/KeyboardAccessory';
 
 export default function EditPasswordScreen() {
   const router = useRouter();
+  const { passwordChangeToken } = useLocalSearchParams<{
+    passwordChangeToken?: string;
+  }>();
+
   const [newPassword, setNewPassword] = useState('');
   const [newPasswordConfirm, setNewPasswordConfirm] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // 2026.05.13 박현식
   // 현재 비밀번호 인증 이후 새 비밀번호와 확인값을 검증해 백엔드 변경 API로 전달한다.
+  // 2026.06.05 임재준
+  // 현재 비밀번호 검증 단계에서 발급받은 password_change_token을 함께 전달해 비밀번호 변경 권한을 검증한다.
   const handleUpdatePassword = async () => {
+    if (!passwordChangeToken) {
+      Alert.alert('오류', '비밀번호 변경 인증 정보가 없습니다. 다시 인증해주세요.', [
+        { text: '확인', onPress: () => router.back() },
+      ]);
+      return;
+    }
+
     if (!newPassword || !newPasswordConfirm) {
       Alert.alert('알림', '새 비밀번호를 모두 입력해주세요.');
       return;
@@ -31,17 +56,30 @@ export default function EditPasswordScreen() {
 
     try {
       setIsSubmitting(true);
+
       await updateUserPasswordApi({
+        password_change_token: passwordChangeToken,
         new_password: newPassword,
         new_password_confirm: newPasswordConfirm,
       });
+
       Alert.alert('성공', '비밀번호가 변경되었습니다.', [
         { text: '확인', onPress: () => router.back() },
       ]);
     } catch (error: any) {
       console.error('Password Update Error:', error);
-      const message = error?.response?.data?.detail || '비밀번호 변경에 실패했습니다.';
-      Alert.alert('오류', typeof message === 'string' ? message : '비밀번호 변경에 실패했습니다.');
+      console.error('status:', error?.response?.status);
+      console.error('data:', JSON.stringify(error?.response?.data, null, 2));
+
+      const message =
+        error?.response?.data?.detail || '비밀번호 변경에 실패했습니다.';
+
+      Alert.alert(
+        '오류',
+        typeof message === 'string'
+          ? message
+          : '비밀번호 변경에 실패했습니다.'
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -54,7 +92,9 @@ export default function EditPasswordScreen() {
     >
       <View style={styles.container}>
         <Text style={styles.title}>비밀번호 수정</Text>
-        <Text style={styles.description}>새 비밀번호는 8자리 이상으로 입력해주세요.</Text>
+        <Text style={styles.description}>
+          새 비밀번호는 8자리 이상으로 입력해주세요.
+        </Text>
 
         <TextInput
           style={styles.input}
@@ -64,6 +104,7 @@ export default function EditPasswordScreen() {
           onChangeText={setNewPassword}
           secureTextEntry
           inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+          editable={!isSubmitting}
         />
 
         <TextInput
@@ -74,6 +115,7 @@ export default function EditPasswordScreen() {
           onChangeText={setNewPasswordConfirm}
           secureTextEntry
           inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+          editable={!isSubmitting}
         />
 
         <Pressable
@@ -88,6 +130,7 @@ export default function EditPasswordScreen() {
           )}
         </Pressable>
       </View>
+
       <KeyboardAccessory />
     </KeyboardAvoidingView>
   );
