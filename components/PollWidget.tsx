@@ -10,7 +10,7 @@ type Props = {
 };
 
 // 2026.08.14 임재준
-// 게시물 내 투표 선택지를 표시하고 투표 참여 및 득표율 진행 바를 렌더링한다.
+// 게시물 내 투표 선택지를 표시하고 투표 참여, 선택 변경 및 재클릭 시 투표 취소를 지원한다.
 export default function PollWidget({ postId, poll, onVoted }: Props) {
   const [currentPoll, setCurrentPoll] = useState<PostPoll>(poll);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -25,24 +25,45 @@ export default function PollWidget({ postId, poll, onVoted }: Props) {
     event.stopPropagation();
     if (isSubmitting || currentPoll.isClosed) return;
 
-    // 낙관적 UI 업데이트
     const previousPoll = currentPoll;
-    const isFirstVote = !hasVoted;
-    const updatedOptions = currentPoll.options.map((opt) => {
-      if (opt.id === optionId) {
-        return { ...opt, votes: opt.votes + 1 };
-      }
-      if (opt.id === currentPoll.userVotedOptionId) {
-        return { ...opt, votes: Math.max(opt.votes - 1, 0) };
-      }
-      return opt;
-    });
+    const isCancelling = String(currentPoll.userVotedOptionId) === String(optionId);
+
+    // 낙관적 UI 업데이트 계산
+    let nextOptions = [...currentPoll.options];
+    let nextTotalVotes = currentPoll.totalVotes;
+    let nextVotedId: string | number | null = optionId;
+
+    if (isCancelling) {
+      // 1. 투표 취소인 경우
+      nextOptions = nextOptions.map((opt) =>
+        String(opt.id) === String(optionId) ? { ...opt, votes: Math.max(opt.votes - 1, 0) } : opt
+      );
+      nextTotalVotes = Math.max(nextTotalVotes - 1, 0);
+      nextVotedId = null;
+    } else if (hasVoted) {
+      // 2. 다른 항목으로 변경하는 경우
+      nextOptions = nextOptions.map((opt) => {
+        if (String(opt.id) === String(optionId)) {
+          return { ...opt, votes: opt.votes + 1 };
+        }
+        if (String(opt.id) === String(currentPoll.userVotedOptionId)) {
+          return { ...opt, votes: Math.max(opt.votes - 1, 0) };
+        }
+        return opt;
+      });
+    } else {
+      // 3. 최초 투표인 경우
+      nextOptions = nextOptions.map((opt) =>
+        String(opt.id) === String(optionId) ? { ...opt, votes: opt.votes + 1 } : opt
+      );
+      nextTotalVotes += 1;
+    }
 
     const optimisticPoll: PostPoll = {
       ...currentPoll,
-      options: updatedOptions,
-      totalVotes: isFirstVote ? currentPoll.totalVotes + 1 : currentPoll.totalVotes,
-      userVotedOptionId: optionId,
+      options: nextOptions,
+      totalVotes: nextTotalVotes,
+      userVotedOptionId: nextVotedId,
     };
 
     setCurrentPoll(optimisticPoll);
@@ -158,7 +179,7 @@ export default function PollWidget({ postId, poll, onVoted }: Props) {
 
       <View style={styles.footerRow}>
         <Text style={styles.metaText}>
-          총 {currentPoll.totalVotes}명 참여 {hasVoted ? '· 투표 완료' : ''}
+          총 {currentPoll.totalVotes}명 참여 {hasVoted ? '· (선택 항목 다시 누르면 취소)' : ''}
         </Text>
         {isSubmitting && <ActivityIndicator size="small" color="#FF6B4A" />}
       </View>
