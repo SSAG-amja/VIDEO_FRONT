@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -14,7 +14,7 @@ import {
   View,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { router, useFocusEffect } from 'expo-router';
+import { router } from 'expo-router';
 
 import {
   CommunityPost,
@@ -28,6 +28,7 @@ import {
   updatePostApi,
 } from '../../api/posts';
 import PostWriteModal from '../../components/PostWriteModal';
+import PollWidget from '../../components/PollWidget';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 type FeedFilter = 'all' | 'playlist' | 'movie';
@@ -104,11 +105,10 @@ export default function CommunityScreen() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadPosts();
-    }, [loadPosts])
-  );
+  // 2026.08.14 임재준 수정: 상세 화면에서 뒤로 돌아왔을 때 재로딩 및 스크롤 초기화가 되지 않도록 최초 1회만 로드
+  useEffect(() => {
+    loadPosts();
+  }, [loadPosts]);
 
   // 2026.05.18 박현식
   // 목록에 떠 있는 동일 게시물 상태를 갱신한다.
@@ -364,10 +364,9 @@ export default function CommunityScreen() {
   // 2026.06.05 임재준
   // 게시물 카드 전체에 상세 화면 이동 onPress를 적용한다.
   // 2026.08.14 임재준
-  // 스포일러 태그가 포함된 게시물일 경우 가림막 UI를 적용하고 뱃지를 표시한다.
+  // 스포일러 태그가 포함된 게시물일 경우 피드 화면에서는 본문을 완전히 가리고 상세 페이지 유도 가림막을 표시한다.
   const renderPost = ({ item }: { item: CommunityPost }) => {
     const isSpoilerPost = item.hashtags?.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
-    const isRevealed = revealedSpoilers.has(item.id);
 
     return (
       <Pressable style={styles.postCard} onPress={() => openPostDetail(item)}>
@@ -413,17 +412,27 @@ export default function CommunityScreen() {
 
         <Text style={styles.postTitle}>{item.title}</Text>
 
-        {/* 2026.08.14 임재준: 스포일러 본문 가림막 렌더링 */}
-        {isSpoilerPost && !isRevealed ? (
-          <Pressable
-            style={styles.spoilerOverlay}
-            onPress={(event) => toggleRevealSpoiler(item.id, event)}
-          >
-            <Ionicons name="eye-off-outline" size={18} color="#FF6B4A" />
-            <Text style={styles.spoilerOverlayText}>스포일러가 포함된 글입니다. (눌러서 보기)</Text>
-          </Pressable>
+        {/* 2026.08.14 임재준: 피드 화면에서는 스포일러 글의 본문을 노출하지 않고 상세 이동 가림막으로 고정 표시 */}
+        {isSpoilerPost ? (
+          <View style={styles.spoilerOverlay}>
+            <Ionicons name="eye-off-outline" size={16} color="#FF6B4A" />
+            <Text style={styles.spoilerOverlayText} numberOfLines={1}>
+              스포일러가 포함된 글입니다 (상세보기)
+            </Text>
+          </View>
         ) : (
           <Text style={styles.postContent} numberOfLines={2}>{item.content}</Text>
+        )}
+
+        {/* 2026.08.14 임재준: 첨부된 투표가 있는 경우 투표 위젯 렌더링 */}
+        {item.poll && (
+          <PollWidget
+            postId={item.id}
+            poll={item.poll}
+            onVoted={(updatedPoll) => {
+              syncPost({ ...item, poll: updatedPoll });
+            }}
+          />
         )}
 
         {renderContent(item)}
@@ -617,8 +626,8 @@ const styles = StyleSheet.create({
   iconButton: { padding: 8 },
   postTitle: { color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 7 },
   postContent: { color: '#cfcfcf', fontSize: 14, lineHeight: 21, marginBottom: 13 },
-  spoilerOverlay: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: '#2a2a2a', marginBottom: 13 },
-  spoilerOverlayText: { color: '#bbb', fontSize: 13, fontWeight: '700' },
+  spoilerOverlay: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: '#2a2a2a', marginBottom: 13 },
+  spoilerOverlayText: { flex: 1, color: '#bbb', fontSize: 13, fontWeight: '700' },
   playlistPreview: { flexDirection: 'row', alignItems: 'center', minHeight: 76, padding: 10, borderRadius: 12, backgroundColor: '#191919', marginBottom: 13 },
   moviePreview: { flexDirection: 'row', alignItems: 'center', minHeight: 76, padding: 10, borderRadius: 12, backgroundColor: '#191919', marginBottom: 13 },
   moviePoster: { width: 42, height: 62, borderRadius: 7, backgroundColor: '#222', marginRight: 12 },

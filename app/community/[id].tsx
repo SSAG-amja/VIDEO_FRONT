@@ -30,6 +30,7 @@ import {
   unlikeReplyApi,
   updateReplyApi,
 } from '../../api/posts';
+import PollWidget from '../../components/PollWidget';
 import KeyboardAccessory, {
   KEYBOARD_ACCESSORY_ID,
 } from '../../components/KeyboardAccessory';
@@ -499,7 +500,7 @@ export default function CommunityDetailScreen() {
   // 2026.06.05 임재준
   // 상세 화면 상단의 게시물 본문 영역을 카드 없이 자연스럽게 렌더링한다.
   // 2026.08.14 임재준
-  // 스포일러 태그가 포함된 게시물일 경우 가림막 UI를 적용하고 클릭 시 본문을 표시한다.
+  // 스포일러 태그가 포함된 게시물일 경우 가림막 UI를 적용하고 투표 위젯을 렌더링한다.
   const renderPostHeader = () => {
     if (!post) return null;
 
@@ -536,6 +537,17 @@ export default function CommunityDetailScreen() {
             </Pressable>
           ) : (
             <Text style={styles.postContent}>{post.content}</Text>
+          )}
+
+          {/* 2026.08.14 임재준: 첨부된 투표가 있는 경우 투표 위젯 렌더링 */}
+          {post.poll && (
+            <PollWidget
+              postId={post.id}
+              poll={post.poll}
+              onVoted={(updatedPoll) => {
+                setPost((current) => (current ? { ...current, poll: updatedPoll } : current));
+              }}
+            />
           )}
 
           {post.hashtags?.length > 0 && (

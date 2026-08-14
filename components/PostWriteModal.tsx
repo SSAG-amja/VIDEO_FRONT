@@ -98,6 +98,11 @@ export default function PostWriteModal({
   const [hashtagText, setHashtagText] = useState('');
   const [isSpoiler, setIsSpoiler] = useState(false); // 2026.08.14 임재준: 스포일러 토글 상태
 
+  // 2026.08.14 임재준: 투표 작성 상태
+  const [hasPoll, setHasPoll] = useState(false);
+  const [pollQuestion, setPollQuestion] = useState('');
+  const [pollOptions, setPollOptions] = useState<string[]>(['', '']);
+
   useEffect(() => {
     if (!visible) return;
     setWriteType(initialType);
@@ -110,9 +115,13 @@ export default function PostWriteModal({
 
     // 2026.08.14 임재준: 기존 태그에 스포일러가 포함되어 있는지 확인
     const initialTags = initialHashtags ?? [];
-    const hasSpoiler = initialTags.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
-    setIsSpoiler(hasSpoiler);
+    const hasSpoilerTag = initialTags.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
+    setIsSpoiler(hasSpoilerTag);
     setHashtagText(initialTags.filter((tag) => !tag.includes('스포일러') && !tag.includes('스포')).join(' '));
+
+    setHasPoll(false);
+    setPollQuestion('');
+    setPollOptions(['', '']);
   }, [initialContent, initialHashtags, initialMovie, initialPlaylist, initialTitle, initialType, visible]);
 
   useEffect(() => {
@@ -160,6 +169,31 @@ export default function PostWriteModal({
 
   const hasTaggedTarget = writeType === 'movie' ? Boolean(selectedMovie) : Boolean(selectedPlaylist);
 
+  // 2026.08.14 임재준: 투표 선택지 추가 (최대 4개)
+  const addPollOption = () => {
+    if (pollOptions.length >= 4) {
+      Alert.alert('알림', '선택지는 최대 4개까지 추가할 수 있습니다.');
+      return;
+    }
+    setPollOptions([...pollOptions, '']);
+  };
+
+  // 2026.08.14 임재준: 투표 선택지 삭제 (최소 2개 유지)
+  const removePollOption = (index: number) => {
+    if (pollOptions.length <= 2) {
+      Alert.alert('알림', '선택지는 최소 2개 이상이어야 합니다.');
+      return;
+    }
+    setPollOptions(pollOptions.filter((_, i) => i !== index));
+  };
+
+  // 2026.08.14 임재준: 투표 선택지 텍스트 변경
+  const updatePollOption = (text: string, index: number) => {
+    const next = [...pollOptions];
+    next[index] = text;
+    setPollOptions(next);
+  };
+
   // 2026.05.18 박현식
   // 키보드를 닫고 작성 모달을 종료한다.
   const resetAndClose = () => {
@@ -168,7 +202,7 @@ export default function PostWriteModal({
   };
 
   // 2026.05.18 박현식
-  // 2026.08.14 임재준 수정: 스포일러 체크 시 #스포일러 태그 자동 첨부
+  // 2026.08.14 임재준 수정: 스포일러 및 투표 첨부 데이터 함께 검증 및 전송
   const submit = async () => {
     if (writeType === 'movie' && !selectedMovie) {
       Alert.alert('확인', '공유할 영화를 선택해주세요.');
@@ -183,13 +217,26 @@ export default function PostWriteModal({
       return;
     }
 
+    // 투표 검증
+    let pollPayload: { question?: string; options: string[] } | undefined = undefined;
+    if (hasPoll && !lockTarget) {
+      const validOptions = pollOptions.map((opt) => opt.trim()).filter(Boolean);
+      if (validOptions.length < 2) {
+        Alert.alert('확인', '투표 선택지를 2개 이상 입력해주세요.');
+        return;
+      }
+      pollPayload = {
+        question: pollQuestion.trim() || undefined,
+        options: validOptions,
+      };
+    }
+
     const baseHashtags = hashtagText
       .split(/[\s,]+/)
       .map((tag) => tag.trim())
       .filter(Boolean)
       .map((tag) => (tag.startsWith('#') ? tag : `#${tag}`));
 
-    // 스포일러가 켜져 있으면 #스포일러 태그 추가
     if (isSpoiler && !baseHashtags.some((tag) => tag === '#스포일러' || tag === '#스포')) {
       baseHashtags.unshift('#스포일러');
     }
@@ -201,12 +248,14 @@ export default function PostWriteModal({
       post_title: postTitle.trim(),
       post_content: postContent.trim(),
       hashtags: baseHashtags,
+      poll: pollPayload,
     });
 
     setPostTitle('');
     setPostContent('');
     setHashtagText('');
     setIsSpoiler(false);
+    setHasPoll(false);
     Keyboard.dismiss();
   };
 
@@ -343,7 +392,7 @@ export default function PostWriteModal({
 
           {/* 2026.08.14 임재준: 스포일러 방지 체크 토글 */}
           <Pressable
-            style={[styles.spoilerToggle, isSpoiler && styles.spoilerToggleActive]}
+            style={[styles.toggleBox, isSpoiler && styles.spoilerToggleActive]}
             onPress={() => setIsSpoiler(!isSpoiler)}
           >
             <Ionicons
@@ -351,16 +400,80 @@ export default function PostWriteModal({
               size={20}
               color={isSpoiler ? '#FF4D4D' : '#888'}
             />
-            <Text style={[styles.spoilerToggleText, isSpoiler && styles.spoilerToggleTextActive]}>
+            <Text style={[styles.toggleBoxText, isSpoiler && styles.spoilerToggleTextActive]}>
               스포일러 포함 여부
             </Text>
             <Ionicons
               name={isSpoiler ? 'checkbox' : 'square-outline'}
               size={20}
               color={isSpoiler ? '#FF4D4D' : '#666'}
-              style={styles.checkboxIcon}
             />
           </Pressable>
+
+          {/* 2026.08.14 임재준: 투표 첨부 토글 (작성 시에만 활성화) */}
+          {!lockTarget && (
+            <View style={styles.pollSection}>
+              <Pressable
+                style={[styles.toggleBox, hasPoll && styles.pollToggleActive]}
+                onPress={() => setHasPoll(!hasPoll)}
+              >
+                <Ionicons
+                  name={hasPoll ? 'stats-chart' : 'stats-chart-outline'}
+                  size={19}
+                  color={hasPoll ? '#FF6B4A' : '#888'}
+                />
+                <Text style={[styles.toggleBoxText, hasPoll && styles.pollToggleTextActive]}>
+                  투표 첨부하기
+                </Text>
+                <Ionicons
+                  name={hasPoll ? 'checkbox' : 'square-outline'}
+                  size={20}
+                  color={hasPoll ? '#FF6B4A' : '#666'}
+                />
+              </Pressable>
+
+              {hasPoll && (
+                <View style={styles.pollInputContainer}>
+                  <TextInput
+                    style={styles.pollQuestionInput}
+                    placeholder="투표 질문 (선택)"
+                    placeholderTextColor="#666"
+                    value={pollQuestion}
+                    onChangeText={setPollQuestion}
+                    inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+                  />
+
+                  {pollOptions.map((option, index) => (
+                    <View key={index} style={styles.pollOptionRow}>
+                      <TextInput
+                        style={styles.pollOptionInput}
+                        placeholder={`선택지 ${index + 1}`}
+                        placeholderTextColor="#666"
+                        value={option}
+                        onChangeText={(text) => updatePollOption(text, index)}
+                        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+                      />
+                      {pollOptions.length > 2 && (
+                        <Pressable
+                          style={styles.removeOptionBtn}
+                          onPress={() => removePollOption(index)}
+                        >
+                          <Ionicons name="trash-outline" size={18} color="#FF6B4A" />
+                        </Pressable>
+                      )}
+                    </View>
+                  ))}
+
+                  {pollOptions.length < 4 && (
+                    <Pressable style={styles.addOptionBtn} onPress={addPollOption}>
+                      <Ionicons name="add" size={16} color="#FF6B4A" />
+                      <Text style={styles.addOptionBtnText}>선택지 추가</Text>
+                    </Pressable>
+                  )}
+                </View>
+              )}
+            </View>
+          )}
         </ScrollView>
         <KeyboardAccessory />
       </KeyboardAvoidingView>
@@ -397,9 +510,18 @@ const styles = StyleSheet.create({
   targetSub: { color: '#777', fontSize: 12, marginTop: 4 },
   field: { height: 48, borderRadius: 12, paddingHorizontal: 14, color: '#fff', backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 12 },
   contentInput: { minHeight: 142, borderRadius: 12, padding: 14, color: '#fff', textAlignVertical: 'top', backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 12 },
-  spoilerToggle: { flexDirection: 'row', alignItems: 'center', height: 48, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 20 },
+  toggleBox: { flexDirection: 'row', alignItems: 'center', height: 48, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 12 },
   spoilerToggleActive: { borderColor: '#FF4D4D', backgroundColor: 'rgba(255,77,77,0.08)' },
-  spoilerToggleText: { flex: 1, color: '#888', fontSize: 14, fontWeight: '700', marginLeft: 10 },
+  pollToggleActive: { borderColor: '#FF6B4A', backgroundColor: 'rgba(255,107,74,0.08)' },
+  toggleBoxText: { flex: 1, color: '#888', fontSize: 14, fontWeight: '700', marginLeft: 10 },
   spoilerToggleTextActive: { color: '#FF4D4D' },
-  checkboxIcon: { marginLeft: 'auto' },
+  pollToggleTextActive: { color: '#FF6B4A' },
+  pollSection: { marginBottom: 20 },
+  pollInputContainer: { padding: 14, borderRadius: 12, backgroundColor: '#121212', borderWidth: 1, borderColor: '#242424', gap: 10 },
+  pollQuestionInput: { height: 42, borderRadius: 10, paddingHorizontal: 12, color: '#fff', backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', fontSize: 13 },
+  pollOptionRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  pollOptionInput: { flex: 1, height: 42, borderRadius: 10, paddingHorizontal: 12, color: '#fff', backgroundColor: '#1a1a1a', borderWidth: 1, borderColor: '#333', fontSize: 13 },
+  removeOptionBtn: { padding: 8 },
+  addOptionBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 10, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: '#333', borderStyle: 'dashed' },
+  addOptionBtnText: { color: '#FF6B4A', fontSize: 13, fontWeight: '800' },
 });

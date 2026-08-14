@@ -23,6 +23,24 @@ export type CommunityReply = {
   isLiked?: boolean;
 };
 
+// 2026.08.14 임재준
+// 투표 선택지 및 투표 상태 타입 정의
+export type PollOption = {
+  id: string | number;
+  text: string;
+  votes: number;
+};
+
+export type PostPoll = {
+  id?: string | number;
+  question?: string | null;
+  options: PollOption[];
+  totalVotes: number;
+  userVotedOptionId?: string | number | null;
+  isClosed?: boolean;
+};
+
+// 2026.08.14 임재준: 투표(poll) 필드 추가
 export type CommunityPost = {
   id: string;
   type: CommunityPostType;
@@ -46,8 +64,10 @@ export type CommunityPost = {
     movies: MoviePreview[];
   };
   commentList: CommunityReply[];
+  poll?: PostPoll | null;
 };
 
+// 2026.08.14 임재준: 투표 생성 페이로드(poll) 필드 추가
 export type CreatePostPayload = {
   is_playlist: boolean;
   movie_id?: number;
@@ -55,6 +75,10 @@ export type CreatePostPayload = {
   post_title: string;
   post_content: string;
   hashtags: string[];
+  poll?: {
+    question?: string;
+    options: string[];
+  };
 };
 
 export type UpdatePostPayload = {
@@ -126,10 +150,27 @@ export const toCommunityReply = (reply: any): CommunityReply => ({
 });
 
 // 2026.05.18 박현식
+// 2026.08.14 임재준 수정: 투표(poll) 응답 변환 로직 추가
 // 게시물 API 응답을 영화/플레이리스트 타입별 커뮤니티 카드 데이터로 변환한다.
 export const toCommunityPost = (post: any): CommunityPost => {
   const hashtags = post.hashtags ?? [];
   const isPlaylist = Boolean(post.is_playlist);
+
+  let poll: PostPoll | null = null;
+  if (post.poll) {
+    poll = {
+      id: post.poll.id,
+      question: post.poll.question,
+      options: (post.poll.options ?? []).map((opt: any) => ({
+        id: opt.id,
+        text: opt.text,
+        votes: Number(opt.votes ?? 0),
+      })),
+      totalVotes: Number(post.poll.total_votes ?? 0),
+      userVotedOptionId: post.poll.user_voted_option_id,
+      isClosed: Boolean(post.poll.is_closed),
+    };
+  }
 
   return {
     id: String(post.post_id),
@@ -160,6 +201,7 @@ export const toCommunityPost = (post: any): CommunityPost => {
         }
       : undefined,
     commentList: (post.replies ?? []).map(toCommunityReply),
+    poll,
   };
 };
 
@@ -266,4 +308,11 @@ export const likeReplyApi = async (postId: string | number, replyId: string | nu
 export const unlikeReplyApi = async (postId: string | number, replyId: string | number) => {
   const response = await client.delete(`/api/v1/post/${postId}/replies/${replyId}/likes`);
   return toReplyLikeResult(response.data);
+};
+
+// 2026.08.14 임재준
+// 게시물에 첨부된 투표에 참여한다.
+export const votePollApi = async (postId: string | number, optionId: string | number) => {
+  const response = await client.post(`/api/v1/post/${postId}/poll/vote`, { option_id: optionId });
+  return response.data;
 };
