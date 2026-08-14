@@ -87,6 +87,10 @@ export default function CommunityDetailScreen() {
   const [isReplySubmitting, setIsReplySubmitting] = useState(false);
   const [isLikeSubmitting, setIsLikeSubmitting] = useState(false);
 
+  // 2026.08.14 임재준
+  // 상세 화면에서 스포일러 본문 열람 여부 상태를 관리한다.
+  const [isSpoilerRevealed, setIsSpoilerRevealed] = useState(false);
+
   // 2026.06.05 임재준
   // 게시물 상세 정보를 불러와 본문, 좋아요, 댓글 목록을 한 화면에 표시한다.
   const loadPostDetail = useCallback(async () => {
@@ -368,7 +372,6 @@ export default function CommunityDetailScreen() {
             setPost((current) => {
               if (!current) return current;
 
-              // 삭제할 대상 댓글 및 해당 댓글에 종속된 모든 하위 대댓글 ID 탐색 및 수집
               const targetIds = new Set<string>([String(reply.id)]);
               let hasNewChild = true;
               while (hasNewChild) {
@@ -495,8 +498,12 @@ export default function CommunityDetailScreen() {
 
   // 2026.06.05 임재준
   // 상세 화면 상단의 게시물 본문 영역을 카드 없이 자연스럽게 렌더링한다.
+  // 2026.08.14 임재준
+  // 스포일러 태그가 포함된 게시물일 경우 가림막 UI를 적용하고 클릭 시 본문을 표시한다.
   const renderPostHeader = () => {
     if (!post) return null;
+
+    const isSpoilerPost = post.hashtags?.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
 
     return (
       <View>
@@ -510,11 +517,26 @@ export default function CommunityDetailScreen() {
               <Text style={styles.userName}>{post.user}</Text>
               <Text style={styles.userMeta}>{post.time}</Text>
             </View>
+
+            {/* 2026.08.14 임재준: 스포일러 뱃지 */}
+            {isSpoilerPost && (
+              <View style={styles.spoilerBadge}>
+                <Text style={styles.spoilerBadgeText}>⚠️ 스포일러</Text>
+              </View>
+            )}
           </View>
 
           <Text style={styles.postTitle}>{post.title}</Text>
 
-          <Text style={styles.postContent}>{post.content}</Text>
+          {/* 2026.08.14 임재준: 스포일러 본문 가림막 렌더링 */}
+          {isSpoilerPost && !isSpoilerRevealed ? (
+            <Pressable style={styles.spoilerOverlay} onPress={() => setIsSpoilerRevealed(true)}>
+              <Ionicons name="eye-off-outline" size={20} color="#FF6B4A" />
+              <Text style={styles.spoilerOverlayText}>⚠️ 스포일러가 포함된 본문입니다. (눌러서 내용 보기)</Text>
+            </Pressable>
+          ) : (
+            <Text style={styles.postContent}>{post.content}</Text>
+          )}
 
           {post.hashtags?.length > 0 && (
             <View style={styles.hashtagRow}>
@@ -883,6 +905,20 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
 
+  spoilerBadge: {
+    backgroundColor: 'rgba(255,77,77,0.15)',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+    marginRight: 6,
+  },
+
+  spoilerBadgeText: {
+    color: '#FF6B6B',
+    fontSize: 11,
+    fontWeight: '800',
+  },
+
   postTitle: {
     color: '#fff',
     fontSize: 25,
@@ -896,6 +932,25 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     marginBottom: 18,
+  },
+
+  spoilerOverlay: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    backgroundColor: '#181818',
+    borderWidth: 1,
+    borderColor: '#2e2e2e',
+    marginBottom: 18,
+  },
+
+  spoilerOverlayText: {
+    color: '#bbb',
+    fontSize: 14,
+    fontWeight: '700',
   },
 
   hashtagRow: {

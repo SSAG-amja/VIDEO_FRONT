@@ -57,6 +57,25 @@ export default function CommunityScreen() {
   const [editingPost, setEditingPost] = useState<CommunityPost | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 2026.08.14 임재준
+  // 피드 목록에서 스포일러 가림막을 클릭해 내용을 열람한 게시물 ID 목록을 관리한다.
+  const [revealedSpoilers, setRevealedSpoilers] = useState<Set<string>>(new Set());
+
+  // 2026.08.14 임재준
+  // 스포일러 가림막 클릭 시 해당 게시물의 본문 가림 상태를 토글한다.
+  const toggleRevealSpoiler = (postId: string, event: any) => {
+    event.stopPropagation();
+    setRevealedSpoilers((prev) => {
+      const next = new Set(prev);
+      if (next.has(postId)) {
+        next.delete(postId);
+      } else {
+        next.add(postId);
+      }
+      return next;
+    });
+  };
+
   // 2026.05.18 박현식
   // 커뮤니티 게시물 목록을 API에서 불러와 화면 상태에 반영한다.
   const loadPosts = useCallback(async () => {
@@ -344,68 +363,96 @@ export default function CommunityScreen() {
   // 커뮤니티 피드의 단일 게시물 카드를 렌더링한다.
   // 2026.06.05 임재준
   // 게시물 카드 전체에 상세 화면 이동 onPress를 적용한다.
-  const renderPost = ({ item }: { item: CommunityPost }) => (
-    <Pressable style={styles.postCard} onPress={() => openPostDetail(item)}>
-      <View style={styles.postTop}>
-        <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{item.user.slice(0, 1)}</Text>
-        </View>
-        <View style={styles.author}>
-          <Text style={styles.userName}>{item.user}</Text>
-          <Text style={styles.userMeta}>{item.time}</Text>
-        </View>
-        {item.isMine && (
-          <View style={styles.ownerActions}>
-            <Pressable
-              onPress={(event) => {
-                event.stopPropagation();
-                openEditPost(item);
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons name="create-outline" size={18} color="#aaa" />
-            </Pressable>
-            <Pressable
-              onPress={(event) => {
-                event.stopPropagation();
-                confirmDeletePost(item);
-              }}
-              style={styles.iconButton}
-            >
-              <Ionicons name="trash-outline" size={18} color="#FF6B4A" />
-            </Pressable>
+  // 2026.08.14 임재준
+  // 스포일러 태그가 포함된 게시물일 경우 가림막 UI를 적용하고 뱃지를 표시한다.
+  const renderPost = ({ item }: { item: CommunityPost }) => {
+    const isSpoilerPost = item.hashtags?.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
+    const isRevealed = revealedSpoilers.has(item.id);
+
+    return (
+      <Pressable style={styles.postCard} onPress={() => openPostDetail(item)}>
+        <View style={styles.postTop}>
+          <View style={styles.avatar}>
+            <Text style={styles.avatarText}>{item.user.slice(0, 1)}</Text>
           </View>
+          <View style={styles.author}>
+            <Text style={styles.userName}>{item.user}</Text>
+            <Text style={styles.userMeta}>{item.time}</Text>
+          </View>
+
+          {/* 2026.08.14 임재준: 스포일러 뱃지 */}
+          {isSpoilerPost && (
+            <View style={styles.spoilerBadge}>
+              <Text style={styles.spoilerBadgeText}>⚠️ 스포일러</Text>
+            </View>
+          )}
+
+          {item.isMine && (
+            <View style={styles.ownerActions}>
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation();
+                  openEditPost(item);
+                }}
+                style={styles.iconButton}
+              >
+                <Ionicons name="create-outline" size={18} color="#aaa" />
+              </Pressable>
+              <Pressable
+                onPress={(event) => {
+                  event.stopPropagation();
+                  confirmDeletePost(item);
+                }}
+                style={styles.iconButton}
+              >
+                <Ionicons name="trash-outline" size={18} color="#FF6B4A" />
+              </Pressable>
+            </View>
+          )}
+        </View>
+
+        <Text style={styles.postTitle}>{item.title}</Text>
+
+        {/* 2026.08.14 임재준: 스포일러 본문 가림막 렌더링 */}
+        {isSpoilerPost && !isRevealed ? (
+          <Pressable
+            style={styles.spoilerOverlay}
+            onPress={(event) => toggleRevealSpoiler(item.id, event)}
+          >
+            <Ionicons name="eye-off-outline" size={18} color="#FF6B4A" />
+            <Text style={styles.spoilerOverlayText}>스포일러가 포함된 글입니다. (눌러서 보기)</Text>
+          </Pressable>
+        ) : (
+          <Text style={styles.postContent} numberOfLines={2}>{item.content}</Text>
         )}
-      </View>
 
-      <Text style={styles.postTitle}>{item.title}</Text>
-      <Text style={styles.postContent} numberOfLines={2}>{item.content}</Text>
-      {renderContent(item)}
+        {renderContent(item)}
 
-      <View style={styles.actionRow}>
-        <Pressable
-          style={styles.actionButton}
-          onPress={(event) => {
-            event.stopPropagation();
-            toggleLike(item.id);
-          }}
-        >
-          <Ionicons name={item.isLiked ? 'heart' : 'heart-outline'} size={20} color={item.isLiked ? '#FF6B4A' : '#999'} />
-          <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>{item.likes}</Text>
-        </Pressable>
-        <Pressable
-          style={styles.actionButton}
-          onPress={(event) => {
-            event.stopPropagation();
-            openPostDetail(item);
-          }}
-        >
-          <Ionicons name="chatbubble-outline" size={18} color="#999" />
-          <Text style={styles.actionText}>{item.comments}</Text>
-        </Pressable>
-      </View>
-    </Pressable>
-  );
+        <View style={styles.actionRow}>
+          <Pressable
+            style={styles.actionButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              toggleLike(item.id);
+            }}
+          >
+            <Ionicons name={item.isLiked ? 'heart' : 'heart-outline'} size={20} color={item.isLiked ? '#FF6B4A' : '#999'} />
+            <Text style={[styles.actionText, item.isLiked && styles.actionTextActive]}>{item.likes}</Text>
+          </Pressable>
+          <Pressable
+            style={styles.actionButton}
+            onPress={(event) => {
+              event.stopPropagation();
+              openPostDetail(item);
+            }}
+          >
+            <Ionicons name="chatbubble-outline" size={18} color="#999" />
+            <Text style={styles.actionText}>{item.comments}</Text>
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -564,10 +611,14 @@ const styles = StyleSheet.create({
   author: { flex: 1 },
   userName: { color: '#fff', fontSize: 14, fontWeight: '800' },
   userMeta: { color: '#777', fontSize: 12, marginTop: 2 },
+  spoilerBadge: { backgroundColor: 'rgba(255,77,77,0.15)', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 6 },
+  spoilerBadgeText: { color: '#FF6B6B', fontSize: 11, fontWeight: '800' },
   ownerActions: { flexDirection: 'row', alignItems: 'center', gap: 2 },
   iconButton: { padding: 8 },
   postTitle: { color: '#fff', fontSize: 17, fontWeight: '800', marginBottom: 7 },
   postContent: { color: '#cfcfcf', fontSize: 14, lineHeight: 21, marginBottom: 13 },
+  spoilerOverlay: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, backgroundColor: '#1c1c1c', borderWidth: 1, borderColor: '#2a2a2a', marginBottom: 13 },
+  spoilerOverlayText: { color: '#bbb', fontSize: 13, fontWeight: '700' },
   playlistPreview: { flexDirection: 'row', alignItems: 'center', minHeight: 76, padding: 10, borderRadius: 12, backgroundColor: '#191919', marginBottom: 13 },
   moviePreview: { flexDirection: 'row', alignItems: 'center', minHeight: 76, padding: 10, borderRadius: 12, backgroundColor: '#191919', marginBottom: 13 },
   moviePoster: { width: 42, height: 62, borderRadius: 7, backgroundColor: '#222', marginRight: 12 },

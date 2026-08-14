@@ -96,6 +96,7 @@ export default function PostWriteModal({
   const [postTitle, setPostTitle] = useState('');
   const [postContent, setPostContent] = useState('');
   const [hashtagText, setHashtagText] = useState('');
+  const [isSpoiler, setIsSpoiler] = useState(false); // 2026.08.14 임재준: 스포일러 토글 상태
 
   useEffect(() => {
     if (!visible) return;
@@ -106,7 +107,12 @@ export default function PostWriteModal({
     setMovieResults([]);
     setPostTitle(initialTitle);
     setPostContent(initialContent);
-    setHashtagText((initialHashtags ?? []).join(' '));
+
+    // 2026.08.14 임재준: 기존 태그에 스포일러가 포함되어 있는지 확인
+    const initialTags = initialHashtags ?? [];
+    const hasSpoiler = initialTags.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
+    setIsSpoiler(hasSpoiler);
+    setHashtagText(initialTags.filter((tag) => !tag.includes('스포일러') && !tag.includes('스포')).join(' '));
   }, [initialContent, initialHashtags, initialMovie, initialPlaylist, initialTitle, initialType, visible]);
 
   useEffect(() => {
@@ -162,7 +168,7 @@ export default function PostWriteModal({
   };
 
   // 2026.05.18 박현식
-  // 작성값을 검증하고 백엔드 게시물 생성/수정 payload로 정리해 제출한다.
+  // 2026.08.14 임재준 수정: 스포일러 체크 시 #스포일러 태그 자동 첨부
   const submit = async () => {
     if (writeType === 'movie' && !selectedMovie) {
       Alert.alert('확인', '공유할 영화를 선택해주세요.');
@@ -177,11 +183,16 @@ export default function PostWriteModal({
       return;
     }
 
-    const hashtags = hashtagText
+    const baseHashtags = hashtagText
       .split(/[\s,]+/)
       .map((tag) => tag.trim())
       .filter(Boolean)
       .map((tag) => (tag.startsWith('#') ? tag : `#${tag}`));
+
+    // 스포일러가 켜져 있으면 #스포일러 태그 추가
+    if (isSpoiler && !baseHashtags.some((tag) => tag === '#스포일러' || tag === '#스포')) {
+      baseHashtags.unshift('#스포일러');
+    }
 
     await onSubmit({
       is_playlist: writeType === 'playlist',
@@ -189,12 +200,13 @@ export default function PostWriteModal({
       playlist_id: writeType === 'playlist' ? Number(selectedPlaylist?.id) : undefined,
       post_title: postTitle.trim(),
       post_content: postContent.trim(),
-      hashtags,
+      hashtags: baseHashtags,
     });
 
     setPostTitle('');
     setPostContent('');
     setHashtagText('');
+    setIsSpoiler(false);
     Keyboard.dismiss();
   };
 
@@ -320,7 +332,7 @@ export default function PostWriteModal({
           />
           <TextInput
             style={styles.field}
-            placeholder="#해시태그"
+            placeholder="#해시태그 (스페이스로 구분)"
             placeholderTextColor="#666"
             value={hashtagText}
             onChangeText={setHashtagText}
@@ -328,6 +340,27 @@ export default function PostWriteModal({
             onSubmitEditing={Keyboard.dismiss}
             inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
           />
+
+          {/* 2026.08.14 임재준: 스포일러 방지 체크 토글 */}
+          <Pressable
+            style={[styles.spoilerToggle, isSpoiler && styles.spoilerToggleActive]}
+            onPress={() => setIsSpoiler(!isSpoiler)}
+          >
+            <Ionicons
+              name={isSpoiler ? 'alert-circle' : 'alert-circle-outline'}
+              size={20}
+              color={isSpoiler ? '#FF4D4D' : '#888'}
+            />
+            <Text style={[styles.spoilerToggleText, isSpoiler && styles.spoilerToggleTextActive]}>
+              스포일러 포함 여부
+            </Text>
+            <Ionicons
+              name={isSpoiler ? 'checkbox' : 'square-outline'}
+              size={20}
+              color={isSpoiler ? '#FF4D4D' : '#666'}
+              style={styles.checkboxIcon}
+            />
+          </Pressable>
         </ScrollView>
         <KeyboardAccessory />
       </KeyboardAvoidingView>
@@ -364,4 +397,9 @@ const styles = StyleSheet.create({
   targetSub: { color: '#777', fontSize: 12, marginTop: 4 },
   field: { height: 48, borderRadius: 12, paddingHorizontal: 14, color: '#fff', backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 12 },
   contentInput: { minHeight: 142, borderRadius: 12, padding: 14, color: '#fff', textAlignVertical: 'top', backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 12 },
+  spoilerToggle: { flexDirection: 'row', alignItems: 'center', height: 48, paddingHorizontal: 14, borderRadius: 12, backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 20 },
+  spoilerToggleActive: { borderColor: '#FF4D4D', backgroundColor: 'rgba(255,77,77,0.08)' },
+  spoilerToggleText: { flex: 1, color: '#888', fontSize: 14, fontWeight: '700', marginLeft: 10 },
+  spoilerToggleTextActive: { color: '#FF4D4D' },
+  checkboxIcon: { marginLeft: 'auto' },
 });
