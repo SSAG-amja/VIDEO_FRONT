@@ -6,6 +6,7 @@ import {
   Image,
   Keyboard,
   Pressable,
+  RefreshControl,
   ScrollView,
   StyleSheet,
   Text,
@@ -51,6 +52,7 @@ export default function CommunityScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [posts, setPosts] = useState<CommunityPost[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false); // 2026.08.14 임재준: 당겨서 새로고침 상태
   const [isWriteOpen, setIsWriteOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<CommunityPost | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -66,6 +68,20 @@ export default function CommunityScreen() {
       Alert.alert('오류', '게시물을 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
+    }
+  }, []);
+
+  // 2026.08.14 임재준
+  // 화면을 위에서 아래로 당겼을 때 최신 커뮤니티 게시물 목록을 새로고침한다.
+  const onRefresh = useCallback(async () => {
+    try {
+      setIsRefreshing(true);
+      setPosts(await fetchPostsApi());
+    } catch (error) {
+      console.error('Post API Refresh Error:', error);
+      Alert.alert('오류', '게시물을 새로고침하지 못했습니다.');
+    } finally {
+      setIsRefreshing(false);
     }
   }, []);
 
@@ -428,6 +444,15 @@ export default function CommunityScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.feedContent}
+          /* 2026.08.14 임재준: 당겨서 새로고침 RefreshControl 연결 */
+          refreshControl={
+            <RefreshControl
+              refreshing={isRefreshing}
+              onRefresh={onRefresh}
+              tintColor="#FF6B4A"
+              colors={['#FF6B4A']}
+            />
+          }
           ListHeaderComponent={
             <>
               {!isSearching && (

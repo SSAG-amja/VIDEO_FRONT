@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -24,8 +24,10 @@ import {
   deleteReplyApi,
   fetchPostApi,
   likePostApi,
+  likeReplyApi,
   MoviePreview,
   unlikePostApi,
+  unlikeReplyApi,
   updateReplyApi,
 } from '../../api/posts';
 import KeyboardAccessory, {
@@ -51,6 +53,27 @@ function PosterImage({ uri, style }: { uri?: string; style: any }) {
   );
 }
 
+// 2026.08.14 임재준
+// 텍스트 내 @유저태그 부분을 파싱하여 하이라이트 스타일을 적용한다.
+function HighlightedCommentText({ text }: { text: string }) {
+  const parts = text.split(/(@[^\s]+)/g);
+
+  return (
+    <Text style={styles.commentText}>
+      {parts.map((part, index) => {
+        if (part.startsWith('@')) {
+          return (
+            <Text key={index} style={styles.mentionText}>
+              {part}{' '}
+            </Text>
+          );
+        }
+        return <Text key={index}>{part}</Text>;
+      })}
+    </Text>
+  );
+}
+
 export default function CommunityDetailScreen() {
   const insets = useSafeAreaInsets();
   const { id } = useLocalSearchParams<{ id?: string }>();
@@ -60,6 +83,7 @@ export default function CommunityDetailScreen() {
 
   const [commentText, setCommentText] = useState('');
   const [editingReply, setEditingReply] = useState<CommunityReply | null>(null);
+  const [replyingTo, setReplyingTo] = useState<CommunityReply | null>(null); // 2026.08.14 임재준: 대댓글 대상 상태
   const [isReplySubmitting, setIsReplySubmitting] = useState(false);
   const [isLikeSubmitting, setIsLikeSubmitting] = useState(false);
 
@@ -88,6 +112,50 @@ export default function CommunityDetailScreen() {
   useEffect(() => {
     loadPostDetail();
   }, [loadPostDetail]);
+
+  // 2026.08.14 임재준
+  // 부모 댓글 바로 아래에 대댓글(대댓글의 답글 포함)들이 순서대로 올 수 있도록 계층형 목록을 구성한다.
+  const structuredComments = useMemo(() => {
+    if (!post?.commentList) return [];
+
+    const commentMap = new Map<string, CommunityReply>();
+    const rootComments: CommunityReply[] = [];
+    const childMap = new Map<string, CommunityReply[]>();
+
+    post.commentList.forEach((comment) => {
+      commentMap.set(String(comment.id), comment);
+    });
+
+    post.commentList.forEach((comment) => {
+      if (!comment.parentId) {
+        rootComments.push(comment);
+      } else {
+        let currentParentId = String(comment.parentId);
+        while (commentMap.has(currentParentId) && commentMap.get(currentParentId)?.parentId) {
+          currentParentId = String(commentMap.get(currentParentId)!.parentId);
+        }
+        const children = childMap.get(currentParentId) || [];
+        children.push(comment);
+        childMap.set(currentParentId, children);
+      }
+    });
+
+    const orderedList: CommunityReply[] = [];
+    rootComments.forEach((root) => {
+      orderedList.push(root);
+      const children = childMap.get(String(root.id)) || [];
+      orderedList.push(...children);
+    });
+
+    const addedIds = new Set(orderedList.map((item) => String(item.id)));
+    post.commentList.forEach((item) => {
+      if (!addedIds.has(String(item.id))) {
+        orderedList.push(item);
+      }
+    });
+
+    return orderedList;
+  }, [post?.commentList]);
 
   // 2026.06.05 임재준
   // 상세 화면에서 좋아요 상태를 즉시 반영하고 서버 응답으로 최종 값을 보정한다.
@@ -128,7 +196,61 @@ export default function CommunityDetailScreen() {
     }
   };
 
+  // 2026.08.14 임재준
+  // 댓글 좋아요 상태를 낙관적으로 변경하고 서버 API를 호출하여 최종 값을 보정한다.
+  const toggleReplyLike = async (reply: CommunityReply) => {
+    if (!post) return;
+
+    const previousComments = post.commentList;
+    const targetIsLiked = Boolean(reply.isLiked);
+
+    setPost((current) => {
+      if (!current) return current;
+      return {
+        ...current,
+        commentList: current.commentList.map((item) => {
+          if (item.id === reply.id) {
+            const currentLikes = item.likes ?? 0;
+            return {
+              ...item,
+              isLiked: !targetIsLiked,
+              likes: !targetIsLiked ? currentLikes + 1 : Math.max(currentLikes - 1, 0),
+            };
+          }
+          return item;
+        }),
+      };
+    });
+
+    try {
+      const result = targetIsLiked
+        ? await unlikeReplyApi(post.id, reply.id)
+        : await likeReplyApi(post.id, reply.id);
+
+      setPost((current) => {
+        if (!current) return current;
+        return {
+          ...current,
+          commentList: current.commentList.map((item) =>
+            item.id === reply.id
+              ? {
+                  ...item,
+                  likes: result.reply_likes,
+                  isLiked: result.reply_is_liked,
+                }
+              : item
+          ),
+        };
+      });
+    } catch (error) {
+      console.error('Reply Like API Error:', error);
+      setPost((current) => (current ? { ...current, commentList: previousComments } : current));
+      Alert.alert('오류', '댓글 좋아요 상태를 변경하지 못했습니다.');
+    }
+  };
+
   // 2026.06.05 임재준
+  // 2026.08.14 임재준 수정: 대댓글(최상위 부모 ID 매핑) 및 유저 태그 포함 등록 처리
   // 댓글 작성 또는 수정 후 상세 화면의 댓글 목록과 댓글 수를 즉시 갱신한다.
   const submitReply = async () => {
     if (!post) return;
@@ -143,12 +265,17 @@ export default function CommunityDetailScreen() {
     try {
       setIsReplySubmitting(true);
 
+      const targetParentId = replyingTo
+        ? (replyingTo.parentId ? replyingTo.parentId : replyingTo.id)
+        : undefined;
+
       const reply = editingReply
         ? await updateReplyApi(post.id, editingReply.id, {
             reply_content: content,
           })
         : await createReplyApi(post.id, {
             reply_content: content,
+            ...(targetParentId ? { parent_id: targetParentId } : {}),
           });
 
       setPost((current) => {
@@ -156,7 +283,7 @@ export default function CommunityDetailScreen() {
 
         const nextComments = editingReply
           ? current.commentList.map((item) =>
-              item.id === reply.id ? reply : item
+              item.id === reply.id ? { ...item, ...reply } : item
             )
           : [...current.commentList, reply];
 
@@ -169,6 +296,7 @@ export default function CommunityDetailScreen() {
 
       setCommentText('');
       setEditingReply(null);
+      setReplyingTo(null);
       Keyboard.dismiss();
     } catch (error) {
       console.error('Reply Submit API Error:', error);
@@ -184,8 +312,21 @@ export default function CommunityDetailScreen() {
   // 2026.06.05 임재준
   // 선택한 댓글을 입력창에 올려 수정 모드로 전환한다.
   const startEditReply = (reply: CommunityReply) => {
+    setReplyingTo(null);
     setEditingReply(reply);
     setCommentText(reply.text);
+  };
+
+  // 2026.08.14 임재준
+  // 댓글 수정 전 확인 알림창을 띄우고 승인 시 수정 모드로 전환한다.
+  const confirmEditReply = (reply: CommunityReply) => {
+    Alert.alert('댓글 수정', '댓글을 수정하시겠습니까?', [
+      { text: '취소', style: 'cancel' },
+      {
+        text: '수정',
+        onPress: () => startEditReply(reply),
+      },
+    ]);
   };
 
   // 2026.06.05 임재준
@@ -195,8 +336,23 @@ export default function CommunityDetailScreen() {
     setCommentText('');
   };
 
+  // 2026.08.14 임재준
+  // 특정 댓글에 대한 대댓글(답글) 작성 모드로 전환하고 @유저태그를 입력창에 자동 입력한다.
+  const startReplyToUser = (targetReply: CommunityReply) => {
+    setEditingReply(null);
+    setReplyingTo(targetReply);
+    setCommentText(`@${targetReply.user} `);
+  };
+
+  // 2026.08.14 임재준
+  // 대댓글(답글) 작성 모드를 취소하고 입력값을 초기화한다.
+  const cancelReplyToUser = () => {
+    setReplyingTo(null);
+    setCommentText('');
+  };
+
   // 2026.06.05 임재준
-  // 댓글 삭제 성공 시 댓글 목록과 댓글 수를 즉시 갱신한다.
+  // 2026.08.14 임재준 수정: 본 댓글 삭제 시 종속된 모든 대댓글도 함께 삭제하고 총 댓글 수를 올바르게 차감한다.
   const confirmDeleteReply = (reply: CommunityReply) => {
     if (!post) return;
 
@@ -212,17 +368,35 @@ export default function CommunityDetailScreen() {
             setPost((current) => {
               if (!current) return current;
 
+              // 삭제할 대상 댓글 및 해당 댓글에 종속된 모든 하위 대댓글 ID 탐색 및 수집
+              const targetIds = new Set<string>([String(reply.id)]);
+              let hasNewChild = true;
+              while (hasNewChild) {
+                hasNewChild = false;
+                current.commentList.forEach((item) => {
+                  if (item.parentId && targetIds.has(String(item.parentId)) && !targetIds.has(String(item.id))) {
+                    targetIds.add(String(item.id));
+                    hasNewChild = true;
+                  }
+                });
+              }
+
+              const nextCommentList = current.commentList.filter(
+                (item) => !targetIds.has(String(item.id))
+              );
+
               return {
                 ...current,
-                commentList: current.commentList.filter(
-                  (item) => item.id !== reply.id
-                ),
-                comments: Math.max(current.comments - 1, 0),
+                commentList: nextCommentList,
+                comments: Math.max(current.comments - targetIds.size, 0),
               };
             });
 
             if (editingReply?.id === reply.id) {
               cancelEditReply();
+            }
+            if (replyingTo?.id === reply.id) {
+              cancelReplyToUser();
             }
           } catch (error) {
             console.error('Delete Reply API Error:', error);
@@ -426,7 +600,7 @@ export default function CommunityDetailScreen() {
       </View>
 
       <FlatList
-        data={post.commentList}
+        data={structuredComments}
         keyExtractor={(item) => item.id}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
@@ -440,48 +614,117 @@ export default function CommunityDetailScreen() {
         ListEmptyComponent={
           <Text style={styles.emptyText}>아직 댓글이 없습니다.</Text>
         }
-        renderItem={({ item }) => (
-          <View style={styles.commentItem}>
-            <View style={styles.commentAvatar}>
-              <Text style={styles.commentAvatarText}>
-                {item.user.slice(0, 1)}
-              </Text>
-            </View>
+        renderItem={({ item }) => {
+          const isReply = Boolean(item.parentId);
 
-            <View style={styles.commentBody}>
-              <View style={styles.commentMetaRow}>
-                <Text style={styles.commentUser}>{item.user}</Text>
-                <Text style={styles.commentTime}>{item.time}</Text>
+          return (
+            <View
+              style={[
+                styles.commentItem,
+                isReply && styles.nestedCommentItem,
+              ]}
+            >
+              {isReply && (
+                <Ionicons
+                  name="return-down-forward"
+                  size={16}
+                  color="#FF6B4A"
+                  style={styles.replyBranchIcon}
+                />
+              )}
+
+              <View
+                style={[
+                  styles.commentAvatar,
+                  isReply && styles.nestedCommentAvatar,
+                ]}
+              >
+                <Text style={styles.commentAvatarText}>
+                  {item.user.slice(0, 1)}
+                </Text>
               </View>
 
-              <Text style={styles.commentText}>{item.text}</Text>
-            </View>
+              <View style={styles.commentBody}>
+                <View style={styles.commentMetaRow}>
+                  <Text style={styles.commentUser}>{item.user}</Text>
+                  <Text style={styles.commentTime}>{item.time}</Text>
+                </View>
 
-            {item.isMine && (
-              <View style={styles.replyActions}>
-                <Pressable
-                  onPress={() => startEditReply(item)}
-                  style={styles.replyActionButton}
-                >
-                  <Ionicons name="create-outline" size={16} color="#aaa" />
-                </Pressable>
+                {/* 2026.08.14 임재준: @멘션 하이라이트 텍스트 렌더링 */}
+                <HighlightedCommentText text={item.text} />
 
-                <Pressable
-                  onPress={() => confirmDeleteReply(item)}
-                  style={styles.replyActionButton}
-                >
-                  <Ionicons name="trash-outline" size={16} color="#FF6B4A" />
-                </Pressable>
+                {/* 2026.08.14 임재준: 댓글 하단 답글달기 및 좋아요 액션 영역 */}
+                <View style={styles.commentFooterRow}>
+                  <Pressable
+                    onPress={() => startReplyToUser(item)}
+                    style={styles.replyTextButton}
+                  >
+                    <Text style={styles.replyTextButtonLabel}>답글 달기</Text>
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => toggleReplyLike(item)}
+                    style={styles.replyLikeButton}
+                  >
+                    <Ionicons
+                      name={item.isLiked ? 'heart' : 'heart-outline'}
+                      size={14}
+                      color={item.isLiked ? '#FF6B4A' : '#777'}
+                    />
+                    {(item.likes ?? 0) > 0 && (
+                      <Text
+                        style={[
+                          styles.replyLikeCount,
+                          item.isLiked && styles.actionTextActive,
+                        ]}
+                      >
+                        {item.likes}
+                      </Text>
+                    )}
+                  </Pressable>
+                </View>
               </View>
-            )}
-          </View>
-        )}
+
+              {item.isMine && (
+                <View style={styles.replyActions}>
+                  {/* 2026.08.14 임재준: 수정 확인 Alert 연결 */}
+                  <Pressable
+                    onPress={() => confirmEditReply(item)}
+                    style={styles.replyActionButton}
+                  >
+                    <Ionicons name="create-outline" size={16} color="#aaa" />
+                  </Pressable>
+
+                  <Pressable
+                    onPress={() => confirmDeleteReply(item)}
+                    style={styles.replyActionButton}
+                  >
+                    <Ionicons name="trash-outline" size={16} color="#FF6B4A" />
+                  </Pressable>
+                </View>
+              )}
+            </View>
+          );
+        }}
       />
 
+      {/* 2026.08.14 임재준: 댓글 수정 중 표시 바 */}
       {editingReply && (
         <View style={styles.editingReplyBar}>
           <Text style={styles.editingReplyText}>댓글 수정 중</Text>
           <Pressable onPress={cancelEditReply}>
+            <Ionicons name="close-circle" size={18} color="#777" />
+          </Pressable>
+        </View>
+      )}
+
+      {/* 2026.08.14 임재준: 대댓글(답글) 작성 중 표시 바 */}
+      {replyingTo && !editingReply && (
+        <View style={styles.editingReplyBar}>
+          <Text style={styles.editingReplyText}>
+            @{replyingTo.user}님에게 답글 작성 중
+          </Text>
+          <Pressable onPress={cancelReplyToUser}>
             <Ionicons name="close-circle" size={18} color="#777" />
           </Pressable>
         </View>
@@ -514,7 +757,11 @@ export default function CommunityDetailScreen() {
 
         <TextInput
           style={styles.commentInput}
-          placeholder="댓글을 입력하세요"
+          placeholder={
+            replyingTo
+              ? `@${replyingTo.user}님에게 답글을 입력하세요`
+              : '댓글을 입력하세요'
+          }
           placeholderTextColor="#666"
           value={commentText}
           onChangeText={setCommentText}
@@ -777,6 +1024,18 @@ const styles = StyleSheet.create({
     borderBottomColor: '#171717',
   },
 
+  nestedCommentItem: {
+    paddingLeft: 36,
+    backgroundColor: '#0e0e0e',
+    borderLeftWidth: 2,
+    borderLeftColor: '#FF6B4A',
+  },
+
+  replyBranchIcon: {
+    marginRight: 6,
+    marginTop: 4,
+  },
+
   commentAvatar: {
     width: 32,
     height: 32,
@@ -785,6 +1044,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#242424',
     marginRight: 10,
+  },
+
+  nestedCommentAvatar: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
   },
 
   commentAvatarText: {
@@ -821,6 +1086,41 @@ const styles = StyleSheet.create({
     color: '#cfcfcf',
     fontSize: 14,
     lineHeight: 20,
+  },
+
+  mentionText: {
+    color: '#FFB199',
+    fontWeight: '800',
+  },
+
+  commentFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    marginTop: 6,
+  },
+
+  replyTextButton: {
+    paddingVertical: 2,
+  },
+
+  replyTextButtonLabel: {
+    color: '#888',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+
+  replyLikeButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 2,
+  },
+
+  replyLikeCount: {
+    color: '#777',
+    fontSize: 11,
+    fontWeight: '700',
   },
 
   replyActions: {

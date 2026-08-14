@@ -9,12 +9,18 @@ export type MoviePreview = {
   posterPath?: string | null;
 };
 
+// 2026.08.14 임재준
+// 대댓글 식별을 위한 parentId, 멘션 대상, 댓글 좋아요 필드를 추가한다.
 export type CommunityReply = {
   id: string;
   user: string;
   text: string;
   time: string;
   isMine: boolean;
+  parentId?: string | null;
+  replyToUser?: string | null;
+  likes?: number;
+  isLiked?: boolean;
 };
 
 export type CommunityPost = {
@@ -57,14 +63,25 @@ export type UpdatePostPayload = {
   hashtags?: string[];
 };
 
+// 2026.08.14 임재준
+// 대댓글 작성을 위해 parent_id를 전달할 수 있도록 확장한다.
 export type ReplyPayload = {
   reply_content: string;
+  parent_id?: string | number;
 };
 
 export type PostLikeResult = {
   post_id: string;
   post_likes: number;
   post_is_liked: boolean;
+};
+
+// 2026.08.14 임재준
+// 댓글 좋아요 API 응답 결과를 위한 타입을 정의한다.
+export type ReplyLikeResult = {
+  reply_id: string;
+  reply_likes: number;
+  reply_is_liked: boolean;
 };
 
 // 2026.05.18 박현식
@@ -94,13 +111,18 @@ const toMoviePreview = (movie: any, index = 0): MoviePreview => ({
 });
 
 // 2026.05.18 박현식
-// 댓글 API 응답을 프론트 댓글 모달에서 쓰는 구조로 변환한다.
+// 2026.08.14 임재준 수정: 대댓글 부모 ID 및 댓글 좋아요 필드 변환 지원
+// 댓글 API 응답을 프론트 댓글 컴포넌트에서 쓰는 구조로 변환한다.
 export const toCommunityReply = (reply: any): CommunityReply => ({
-  id: String(reply.reply_id),
-  user: reply.nickname ?? '사용자',
-  text: reply.reply_content ?? '',
-  time: elapsedText(reply.reply_elapsed_time),
-  isMine: Boolean(reply.reply_is_mine),
+  id: String(reply.reply_id ?? reply.id),
+  user: reply.nickname ?? reply.user ?? '사용자',
+  text: reply.reply_content ?? reply.text ?? '',
+  time: reply.reply_elapsed_time !== undefined ? elapsedText(reply.reply_elapsed_time) : (reply.time ?? '방금'),
+  isMine: Boolean(reply.reply_is_mine ?? reply.isMine),
+  parentId: reply.parent_id ? String(reply.parent_id) : (reply.parentId ? String(reply.parentId) : null),
+  replyToUser: reply.reply_to_user ?? reply.replyToUser ?? null,
+  likes: Number(reply.reply_likes ?? reply.likes ?? 0),
+  isLiked: Boolean(reply.reply_is_liked ?? reply.isLiked),
 });
 
 // 2026.05.18 박현식
@@ -177,10 +199,11 @@ export const deletePostApi = async (postId: string | number) => {
 };
 
 // 2026.05.18 박현식
-// 게시물에 새 댓글을 작성한다.
+// 2026.08.14 임재준 수정: 대댓글(parent_id) 지원
+// 게시물에 새 댓글 또는 대댓글을 작성한다.
 export const createReplyApi = async (postId: string | number, payload: ReplyPayload) => {
   const response = await client.post(`/api/v1/post/${postId}/replies`, payload);
-  return toCommunityReply(response.data.data);
+  return toCommunityReply(response.data.data ?? response.data);
 };
 
 // 2026.05.18 박현식
@@ -191,7 +214,7 @@ export const updateReplyApi = async (
   payload: ReplyPayload
 ) => {
   const response = await client.patch(`/api/v1/post/${postId}/replies/${replyId}`, payload);
-  return toCommunityReply(response.data.data);
+  return toCommunityReply(response.data.data ?? response.data);
 };
 
 // 2026.05.18 박현식
@@ -221,4 +244,26 @@ export const likePostApi = async (postId: string | number) => {
 export const unlikePostApi = async (postId: string | number) => {
   const response = await client.delete(`/api/v1/post/${postId}/likes`);
   return toPostLikeResult(response.data);
+};
+
+// 2026.08.14 임재준
+// 댓글 좋아요 API 응답을 프론트 상태 보정에 필요한 값으로 변환한다.
+const toReplyLikeResult = (data: any): ReplyLikeResult => ({
+  reply_id: String(data.reply_id),
+  reply_likes: Number(data.reply_likes ?? 0),
+  reply_is_liked: Boolean(data.reply_is_liked),
+});
+
+// 2026.08.14 임재준
+// 댓글 좋아요를 추가한다.
+export const likeReplyApi = async (postId: string | number, replyId: string | number) => {
+  const response = await client.post(`/api/v1/post/${postId}/replies/${replyId}/likes`);
+  return toReplyLikeResult(response.data);
+};
+
+// 2026.08.14 임재준
+// 댓글 좋아요를 취소한다.
+export const unlikeReplyApi = async (postId: string | number, replyId: string | number) => {
+  const response = await client.delete(`/api/v1/post/${postId}/replies/${replyId}/likes`);
+  return toReplyLikeResult(response.data);
 };
