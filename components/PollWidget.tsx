@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PostPoll, votePollApi } from '../api/posts';
 
@@ -177,11 +177,11 @@ export default function PollWidget({ postId, poll, onVoted }: Props) {
         })}
       </View>
 
+      {/* 2026.08.22 임재준: 스피너를 제거하고 참여 안내 문구만 고정 표시 */}
       <View style={styles.footerRow}>
         <Text style={styles.metaText}>
           총 {currentPoll.totalVotes}명 참여 {hasVoted ? '· (선택 항목 다시 누르면 취소)' : ''}
         </Text>
-        {isSubmitting && <ActivityIndicator size="small" color="#FF6B4A" />}
       </View>
     </View>
   );
@@ -300,7 +300,7 @@ const styles = StyleSheet.create({
   footerRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    justifyContent: 'flex-start',
     marginTop: 8,
     paddingTop: 2,
   },
