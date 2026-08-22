@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter, // 2026.08.22 임재준: 투표 동기화 이벤트 수신을 위해 추가
   FlatList,
   Image,
   Keyboard,
@@ -126,6 +127,17 @@ export default function CommunityDetailScreen() {
   useEffect(() => {
     loadPostDetail();
   }, [loadPostDetail]);
+
+  // 2026.08.22 임재준: 실시간 투표 변경 이벤트 수신 및 상세 화면 동기화
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('poll:updated', ({ postId, poll }) => {
+      if (String(post?.id) === String(postId)) {
+        setPost((current) => (current ? { ...current, poll } : current));
+      }
+    });
+
+    return () => subscription.remove();
+  }, [post?.id]);
 
   // 2026.08.14 임재준
   // 부모 댓글 바로 아래에 대댓글(대댓글의 답글 포함)들이 순서대로 올 수 있도록 계층형 목록을 구성한다.
@@ -770,7 +782,6 @@ export default function CommunityDetailScreen() {
                   </Pressable>
                 </View>
               ) : (
-                /* 2026.08.22 임재준: 타인 댓글 신고 버튼 */
                 <View style={styles.replyActions}>
                   <Pressable
                     onPress={() => setReportTarget({ type: 'reply', replyId: item.id })}

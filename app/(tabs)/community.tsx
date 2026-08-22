@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  DeviceEventEmitter, // 2026.08.22 임재준: 투표 동기화 이벤트 수신을 위해 추가
   FlatList,
   Image,
   Keyboard,
@@ -114,6 +115,19 @@ export default function CommunityScreen() {
   useEffect(() => {
     loadPosts();
   }, [loadPosts]);
+
+  // 2026.08.22 임재준: 상세 화면 또는 목록에서 발생한 투표 변경 이벤트를 실시간으로 수신하여 피드에 즉시 동기화
+  useEffect(() => {
+    const subscription = DeviceEventEmitter.addListener('poll:updated', ({ postId, poll }) => {
+      setPosts((currentPosts) =>
+        currentPosts.map((post) =>
+          String(post.id) === String(postId) ? { ...post, poll } : post
+        )
+      );
+    });
+
+    return () => subscription.remove();
+  }, []);
 
   // 2026.05.18 박현식
   // 목록에 떠 있는 동일 게시물 상태를 갱신한다.
@@ -373,12 +387,6 @@ export default function CommunityScreen() {
 
   // 2026.05.18 박현식
   // 커뮤니티 피드의 단일 게시물 카드를 렌더링한다.
-  // 2026.06.05 임재준
-  // 게시물 카드 전체에 상세 화면 이동 onPress를 적용한다.
-  // 2026.08.14 임재준
-  // 스포일러 태그가 포함된 게시물일 경우 피드 화면에서는 본문을 완전히 가리고 상세 페이지 유도 가림막을 표시한다.
-  // 2026.08.22 임재준
-  // 타인 게시물의 경우 우측 상단에 신고 버튼을 노출한다.
   const renderPost = ({ item }: { item: CommunityPost }) => {
     const isSpoilerPost = item.hashtags?.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
 
@@ -422,7 +430,6 @@ export default function CommunityScreen() {
               </Pressable>
             </View>
           ) : (
-            /* 2026.08.22 임재준: 타인 게시글 신고 버튼 */
             <Pressable
               onPress={(event) => {
                 event.stopPropagation();
@@ -437,7 +444,6 @@ export default function CommunityScreen() {
 
         <Text style={styles.postTitle}>{item.title}</Text>
 
-        {/* 2026.08.14 임재준: 피드 화면에서는 스포일러 글의 본문을 노출하지 않고 상세 이동 가림막으로 고정 표시 */}
         {isSpoilerPost ? (
           <View style={styles.spoilerOverlay}>
             <Ionicons name="eye-off-outline" size={16} color="#FF6B4A" />
@@ -449,7 +455,7 @@ export default function CommunityScreen() {
           <Text style={styles.postContent} numberOfLines={2}>{item.content}</Text>
         )}
 
-        {/* 2026.08.14 임재준: 첨부된 투표가 있는 경우 투표 위젯 렌더링 */}
+        {/* 2026.08.14 임재준: 투표 위젯 렌더링 */}
         {item.poll && (
           <PollWidget
             postId={item.id}
@@ -525,7 +531,6 @@ export default function CommunityScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.feedContent}
-          /* 2026.08.14 임재준: 당겨서 새로고침 RefreshControl 연결 */
           refreshControl={
             <RefreshControl
               refreshing={isRefreshing}
@@ -604,7 +609,6 @@ export default function CommunityScreen() {
         onSubmit={editingPost ? submitEditPost : submitPost}
       />
 
-      {/* 2026.08.22 임재준: 게시글 신고 모달 */}
       <ReportModal
         visible={Boolean(reportingPost)}
         targetType="post"

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { DeviceEventEmitter, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { PostPoll, votePollApi } from '../api/posts';
 
@@ -9,50 +9,56 @@ type Props = {
   onVoted?: (updatedPoll: PostPoll) => void;
 };
 
-// 2026.08.14 임재준
-// 게시물 내 투표 선택지를 표시하고 투표 참여, 선택 변경 및 재클릭 시 투표 취소를 지원한다.
+// 2026.08.22 임재준
+// 0ms 낙관적 업데이트 + DeviceEventEmitter를 통한 화면 간(목록/상세) 실시간 투표 동기화
 export default function PollWidget({ postId, poll, onVoted }: Props) {
   const [currentPoll, setCurrentPoll] = useState<PostPoll>(poll);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const pollRef = useRef<PostPoll>(poll);
+  const requestQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const pendingCountRef = useRef<number>(0);
 
   useEffect(() => {
-    setCurrentPoll(poll);
+    if (pendingCountRef.current === 0) {
+      setCurrentPoll(poll);
+      pollRef.current = poll;
+    }
   }, [poll]);
 
   const hasVoted = currentPoll.userVotedOptionId !== null && currentPoll.userVotedOptionId !== undefined;
 
-  const handleVote = async (optionId: string | number, event: any) => {
+  const handleVote = (optionId: string | number, event: any) => {
     event.stopPropagation();
-    if (isSubmitting || currentPoll.isClosed) return;
+    if (currentPoll.isClosed) return;
 
-    const previousPoll = currentPoll;
-    const isCancelling = String(currentPoll.userVotedOptionId) === String(optionId);
+    const activePoll = pollRef.current;
+    const isCancelling = String(activePoll.userVotedOptionId) === String(optionId);
+    const hadVoted = activePoll.userVotedOptionId !== null && activePoll.userVotedOptionId !== undefined;
 
-    // 낙관적 UI 업데이트 계산
-    let nextOptions = [...currentPoll.options];
-    let nextTotalVotes = currentPoll.totalVotes;
+    let nextOptions = [...activePoll.options];
+    let nextTotalVotes = activePoll.totalVotes;
     let nextVotedId: string | number | null = optionId;
 
     if (isCancelling) {
-      // 1. 투표 취소인 경우
+      // 1. 투표 취소
       nextOptions = nextOptions.map((opt) =>
         String(opt.id) === String(optionId) ? { ...opt, votes: Math.max(opt.votes - 1, 0) } : opt
       );
       nextTotalVotes = Math.max(nextTotalVotes - 1, 0);
       nextVotedId = null;
-    } else if (hasVoted) {
-      // 2. 다른 항목으로 변경하는 경우
+    } else if (hadVoted) {
+      // 2. 다른 선택지로 변경
       nextOptions = nextOptions.map((opt) => {
         if (String(opt.id) === String(optionId)) {
           return { ...opt, votes: opt.votes + 1 };
         }
-        if (String(opt.id) === String(currentPoll.userVotedOptionId)) {
+        if (String(opt.id) === String(activePoll.userVotedOptionId)) {
           return { ...opt, votes: Math.max(opt.votes - 1, 0) };
         }
         return opt;
       });
     } else {
-      // 3. 최초 투표인 경우
+      // 3. 최초 투표
       nextOptions = nextOptions.map((opt) =>
         String(opt.id) === String(optionId) ? { ...opt, votes: opt.votes + 1 } : opt
       );
@@ -60,38 +66,54 @@ export default function PollWidget({ postId, poll, onVoted }: Props) {
     }
 
     const optimisticPoll: PostPoll = {
-      ...currentPoll,
+      ...activePoll,
       options: nextOptions,
       totalVotes: nextTotalVotes,
       userVotedOptionId: nextVotedId,
     };
 
+    // 0ms 즉시 화면 반영
     setCurrentPoll(optimisticPoll);
+    pollRef.current = optimisticPoll;
     onVoted?.(optimisticPoll);
 
-    try {
-      setIsSubmitting(true);
-      const res = await votePollApi(postId, optionId);
-      if (res?.poll) {
-        const serverPoll: PostPoll = {
-          id: res.poll.id,
-          question: res.poll.question,
-          options: res.poll.options,
-          totalVotes: res.poll.total_votes,
-          userVotedOptionId: res.poll.user_voted_option_id,
-          isClosed: res.poll.is_closed,
-        };
-        setCurrentPoll(serverPoll);
-        onVoted?.(serverPoll);
+    // 전체 화면(목록, 상세 등)에 즉시 이벤트 전파
+    DeviceEventEmitter.emit('poll:updated', {
+      postId: String(postId),
+      poll: optimisticPoll,
+    });
+
+    pendingCountRef.current += 1;
+
+    requestQueueRef.current = requestQueueRef.current.then(async () => {
+      try {
+        const res = await votePollApi(postId, optionId);
+        pendingCountRef.current = Math.max(pendingCountRef.current - 1, 0);
+
+        if (pendingCountRef.current === 0 && res?.poll) {
+          const serverPoll: PostPoll = {
+            id: res.poll.id,
+            question: res.poll.question,
+            options: res.poll.options,
+            totalVotes: res.poll.total_votes,
+            userVotedOptionId: res.poll.user_voted_option_id,
+            isClosed: res.poll.is_closed,
+          };
+          setCurrentPoll(serverPoll);
+          pollRef.current = serverPoll;
+          onVoted?.(serverPoll);
+
+          // 서버 최종 수치로 다시 한 번 전역 동기화
+          DeviceEventEmitter.emit('poll:updated', {
+            postId: String(postId),
+            poll: serverPoll,
+          });
+        }
+      } catch (error) {
+        pendingCountRef.current = Math.max(pendingCountRef.current - 1, 0);
+        console.error('Vote Sync Error:', error);
       }
-    } catch (error) {
-      console.error('Vote API Error:', error);
-      setCurrentPoll(previousPoll);
-      onVoted?.(previousPoll);
-      Alert.alert('오류', '투표를 반영하지 못했습니다.');
-    } finally {
-      setIsSubmitting(false);
-    }
+    });
   };
 
   return (
@@ -123,7 +145,6 @@ export default function PollWidget({ postId, poll, onVoted }: Props) {
                 style={[styles.resultRow, isSelected && styles.resultRowSelected]}
                 onPress={(e) => handleVote(option.id, e)}
               >
-                {/* 득표율 진행 바 */}
                 <View
                   style={[
                     styles.progressBar,
@@ -177,7 +198,6 @@ export default function PollWidget({ postId, poll, onVoted }: Props) {
         })}
       </View>
 
-      {/* 2026.08.22 임재준: 스피너를 제거하고 참여 안내 문구만 고정 표시 */}
       <View style={styles.footerRow}>
         <Text style={styles.metaText}>
           총 {currentPoll.totalVotes}명 참여 {hasVoted ? '· (선택 항목 다시 누르면 취소)' : ''}
