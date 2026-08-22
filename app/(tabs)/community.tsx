@@ -24,11 +24,13 @@ import {
   fetchPostsApi,
   likePostApi,
   MoviePreview,
+  reportPostApi,
   unlikePostApi,
   updatePostApi,
 } from '../../api/posts';
 import PostWriteModal from '../../components/PostWriteModal';
 import PollWidget from '../../components/PollWidget';
+import ReportModal from '../../components/ReportModal';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 type FeedFilter = 'all' | 'playlist' | 'movie';
@@ -57,6 +59,9 @@ export default function CommunityScreen() {
   const [isWriteOpen, setIsWriteOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<CommunityPost | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // 2026.08.22 임재준: 게시글 신고 모달 상태
+  const [reportingPost, setReportingPost] = useState<CommunityPost | null>(null);
 
   // 2026.08.14 임재준
   // 피드 목록에서 스포일러 가림막을 클릭해 내용을 열람한 게시물 ID 목록을 관리한다.
@@ -161,6 +166,13 @@ export default function CommunityScreen() {
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  // 2026.08.22 임재준
+  // 게시물 신고 API를 호출하고 모달 상태를 초기화한다.
+  const handleReportPost = async (reason: string, details?: string) => {
+    if (!reportingPost) return;
+    await reportPostApi(reportingPost.id, reason, details);
   };
 
   // 2026.05.18 박현식
@@ -365,6 +377,8 @@ export default function CommunityScreen() {
   // 게시물 카드 전체에 상세 화면 이동 onPress를 적용한다.
   // 2026.08.14 임재준
   // 스포일러 태그가 포함된 게시물일 경우 피드 화면에서는 본문을 완전히 가리고 상세 페이지 유도 가림막을 표시한다.
+  // 2026.08.22 임재준
+  // 타인 게시물의 경우 우측 상단에 신고 버튼을 노출한다.
   const renderPost = ({ item }: { item: CommunityPost }) => {
     const isSpoilerPost = item.hashtags?.some((tag) => tag.includes('스포일러') || tag.includes('스포'));
 
@@ -386,7 +400,7 @@ export default function CommunityScreen() {
             </View>
           )}
 
-          {item.isMine && (
+          {item.isMine ? (
             <View style={styles.ownerActions}>
               <Pressable
                 onPress={(event) => {
@@ -407,6 +421,17 @@ export default function CommunityScreen() {
                 <Ionicons name="trash-outline" size={18} color="#FF6B4A" />
               </Pressable>
             </View>
+          ) : (
+            /* 2026.08.22 임재준: 타인 게시글 신고 버튼 */
+            <Pressable
+              onPress={(event) => {
+                event.stopPropagation();
+                setReportingPost(item);
+              }}
+              style={styles.iconButton}
+            >
+              <Ionicons name="flag-outline" size={16} color="#777" />
+            </Pressable>
           )}
         </View>
 
@@ -578,6 +603,15 @@ export default function CommunityScreen() {
         }}
         onSubmit={editingPost ? submitEditPost : submitPost}
       />
+
+      {/* 2026.08.22 임재준: 게시글 신고 모달 */}
+      <ReportModal
+        visible={Boolean(reportingPost)}
+        targetType="post"
+        onClose={() => setReportingPost(null)}
+        onSubmit={handleReportPost}
+      />
+
       <KeyboardAccessory />
     </View>
   );

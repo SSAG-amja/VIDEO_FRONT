@@ -316,3 +316,22 @@ export const votePollApi = async (postId: string | number, optionId: string | nu
   const response = await client.post(`/api/v1/post/${postId}/poll/vote`, { option_id: optionId });
   return response.data;
 };
+
+// 2026.08.22 임재준
+// 게시글 신고 API 호출
+export const reportPostApi = async (postId: string | number, reason: string, details?: string) => {
+  const response = await client.post(`/api/v1/post/${postId}/report`, { reason, details });
+  return response.data;
+};
+
+// 2026.08.22 임재준
+// 댓글 신고 API 호출
+export const reportReplyApi = async (
+  postId: string | number,
+  replyId: string | number,
+  reason: string,
+  details?: string
+) => {
+  const response = await client.post(`/api/v1/post/${postId}/replies/${replyId}/report`, { reason, details });
+  return response.data;
+};

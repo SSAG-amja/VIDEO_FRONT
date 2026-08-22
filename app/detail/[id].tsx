@@ -16,7 +16,9 @@ import { getUserOttsApi } from '../../api/user';
 import { deletePinnedMovieApi, pinMovieApi, saveMovieToPlaylistInteractionApi, watchMovieApi } from '../../api/library';
 import { createPlaylistApi, fetchPlaylistsApi } from '../../api/playlists';
 import { CreatePostPayload, createPostApi } from '../../api/posts';
+import { reportMovieApi } from '../../api/reports'; // 2026.08.22 임재준: 영화 신고 API 임포트
 import PostWriteModal from '../../components/PostWriteModal';
+import ReportModal from '../../components/ReportModal';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
@@ -150,6 +152,10 @@ export default function DetailScreen() {
   const pinMovie = usePinStore((state) => state.pinMovie);
   const unpinMovie = usePinStore((state) => state.unpinMovie);
   const isPinned = movieDetail ? pinnedMovies.some((m) => m.id === movieDetail.id) : false;
+
+  // 2026.08.22 임재준: 더보기(ActionSheet) 및 영화 신고 모달 상태
+  const [isMoreMenuVisible, setIsMoreMenuVisible] = useState(false);
+  const [isReportModalVisible, setIsReportModalVisible] = useState(false);
 
   const [isPlaylistModalVisible, setPlaylistModalVisible] = useState(false);
   const [isCreatingNew, setIsCreatingNew] = useState(false);
@@ -344,9 +350,14 @@ export default function DetailScreen() {
       await pinMovieApi(movieDetail.id);
     } catch (error) {
       console.error('Pin API Error:', error);
-      unpinMovie(movieDetail);
+      unpinMovie(movieDetail.id);
       Alert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
     }
+  };
+
+  // 2026.08.22 임재준: 영화 정보 신고 처리 (백엔드 api 연동)
+  const handleMovieReport = async (reason: string, details?: string) => {
+    await reportMovieApi(movieDetail.id, reason, details);
   };
 
   if (!movieDetail) {
@@ -486,13 +497,10 @@ export default function DetailScreen() {
           <View style={{ height: 120 }} />
         </ScrollView>
 
+        {/* 2026.08.22 임재준: 하단 버튼 영역 (점 3개 더보기 + Pin 버튼) */}
         <View style={styles.footer}>
-          <Pressable style={styles.circleIconBtn} onPress={() => setPlaylistModalVisible(true)}>
-            <Ionicons name="folder-open-outline" size={26} color="#fff" />
-          </Pressable>
-
-          <Pressable style={styles.circleIconBtn} onPress={() => setIsWriteModalVisible(true)}>
-            <Ionicons name="pencil" size={24} color="#fff" />
+          <Pressable style={styles.circleIconBtn} onPress={() => setIsMoreMenuVisible(true)}>
+            <Ionicons name="ellipsis-horizontal" size={24} color="#fff" />
           </Pressable>
           
           <Pressable 
@@ -511,6 +519,68 @@ export default function DetailScreen() {
             </Text>
           </Pressable>
         </View>
+
+        {/* 2026.08.22 임재준: 더보기 메뉴 바텀시트 모달 */}
+        <Modal
+          visible={isMoreMenuVisible}
+          transparent={true}
+          animationType="fade"
+          onRequestClose={() => setIsMoreMenuVisible(false)}
+        >
+          <Pressable style={styles.modalOverlay} onPress={() => setIsMoreMenuVisible(false)}>
+            <View style={styles.actionSheetMenu}>
+              <View style={styles.sheetHandle} />
+
+              <Pressable
+                style={styles.actionSheetItem}
+                onPress={() => {
+                  setIsMoreMenuVisible(false);
+                  setPlaylistModalVisible(true);
+                }}
+              >
+                <Ionicons name="folder-open-outline" size={22} color="#fff" style={styles.actionSheetIcon} />
+                <Text style={styles.actionSheetText}>재생목록에 저장</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.actionSheetItem}
+                onPress={() => {
+                  setIsMoreMenuVisible(false);
+                  setIsWriteModalVisible(true);
+                }}
+              >
+                <Ionicons name="create-outline" size={22} color="#fff" style={styles.actionSheetIcon} />
+                <Text style={styles.actionSheetText}>커뮤니티 글 작성하기</Text>
+              </Pressable>
+
+              <Pressable
+                style={[styles.actionSheetItem, styles.actionSheetItemDestructive]}
+                onPress={() => {
+                  setIsMoreMenuVisible(false);
+                  setIsReportModalVisible(true);
+                }}
+              >
+                <Ionicons name="flag-outline" size={22} color="#FF5A36" style={styles.actionSheetIcon} />
+                <Text style={[styles.actionSheetText, { color: '#FF5A36' }]}>영화 정보 신고하기</Text>
+              </Pressable>
+
+              <Pressable
+                style={styles.actionSheetCancelBtn}
+                onPress={() => setIsMoreMenuVisible(false)}
+              >
+                <Text style={styles.actionSheetCancelText}>닫기</Text>
+              </Pressable>
+            </View>
+          </Pressable>
+        </Modal>
+
+        {/* 2026.08.22 임재준: 영화 정보 신고 모달 (targetType="movie" 적용) */}
+        <ReportModal
+          visible={isReportModalVisible}
+          targetType="movie"
+          onClose={() => setIsReportModalVisible(false)}
+          onSubmit={handleMovieReport}
+        />
 
         <PostWriteModal
           visible={isWriteModalVisible}
@@ -539,7 +609,7 @@ export default function DetailScreen() {
             behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
             style={{ flex: 1 }}
           >
-            <Pressable
+            <Pressable 
               style={styles.modalOverlay}
               onPress={() => {
                 setPlaylistModalVisible(false);
@@ -925,6 +995,54 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
 
+  actionSheetMenu: {
+    backgroundColor: '#181818',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 36,
+    borderTopWidth: 1,
+    borderColor: '#292929',
+  },
+
+  actionSheetItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#222',
+  },
+
+  actionSheetItemDestructive: {
+    borderBottomWidth: 0,
+  },
+
+  actionSheetIcon: {
+    marginRight: 14,
+  },
+
+  actionSheetText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  actionSheetCancelBtn: {
+    height: 48,
+    borderRadius: 14,
+    backgroundColor: '#242424',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+  },
+
+  actionSheetCancelText: {
+    color: '#aaa',
+    fontSize: 15,
+    fontWeight: '800',
+  },
+
   bottomSheet: {
     backgroundColor: '#1a1a1a',
     borderTopLeftRadius: 24,
@@ -939,7 +1057,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#444',
     borderRadius: 2,
     alignSelf: 'center',
-    marginBottom: 20,
+    marginBottom: 16,
   },
 
   sheetTitle: {
@@ -1077,117 +1195,6 @@ const styles = StyleSheet.create({
     color: '#111',
     fontSize: 16,
     fontWeight: 'bold',
-  },
-
-  writeModalContainer: {
-    flex: 1,
-    backgroundColor: '#0a0a0a',
-  },
-
-  writeModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: '#222',
-  },
-
-  modalCancelText: {
-    color: '#aaa',
-    fontSize: 16,
-  },
-
-  writeModalTitle: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-
-  modalSubmitText: {
-    color: '#FF5A36',
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-
-  writeModalBody: {
-    padding: 20,
-  },
-
-  selectedMovieBox: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    padding: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: '#FF5A36',
-  },
-
-  selectedMovieImage: {
-    width: 50,
-    height: 75,
-    borderRadius: 8,
-    marginRight: 15,
-  },
-
-  selectedMovieInfo: {
-    flex: 1,
-  },
-
-  selectedMovieTitle: {
-    color: '#fff',
-    fontSize: 16,
-    fontWeight: 'bold',
-    marginBottom: 4,
-  },
-
-  selectedMovieLabel: {
-    color: '#aaa',
-    fontSize: 13,
-  },
-
-  inputSection: {
-    marginBottom: 20,
-  },
-
-  titleInput: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '700',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-
-  contentInput: {
-    color: '#fff',
-    fontSize: 16,
-    lineHeight: 24,
-    textAlignVertical: 'top',
-    minHeight: 150,
-  },
-
-  tagInputWrapper: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: '#1a1a1a',
-    borderRadius: 12,
-    paddingHorizontal: 15,
-    height: 50,
-    borderWidth: 1,
-    borderColor: '#333',
-  },
-
-  tagInput: {
-    flex: 1,
-    color: '#FF5A36',
-    fontSize: 14,
   },
 
   toastContainer: {

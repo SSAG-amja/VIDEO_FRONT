@@ -26,11 +26,14 @@ import {
   likePostApi,
   likeReplyApi,
   MoviePreview,
+  reportPostApi,
+  reportReplyApi,
   unlikePostApi,
   unlikeReplyApi,
   updateReplyApi,
 } from '../../api/posts';
 import PollWidget from '../../components/PollWidget';
+import ReportModal from '../../components/ReportModal';
 import KeyboardAccessory, {
   KEYBOARD_ACCESSORY_ID,
 } from '../../components/KeyboardAccessory';
@@ -91,6 +94,12 @@ export default function CommunityDetailScreen() {
   // 2026.08.14 임재준
   // 상세 화면에서 스포일러 본문 열람 여부 상태를 관리한다.
   const [isSpoilerRevealed, setIsSpoilerRevealed] = useState(false);
+
+  // 2026.08.22 임재준: 게시글 및 댓글 신고 모달 상태
+  const [reportTarget, setReportTarget] = useState<{
+    type: 'post' | 'reply';
+    replyId?: string | number;
+  } | null>(null);
 
   // 2026.06.05 임재준
   // 게시물 상세 정보를 불러와 본문, 좋아요, 댓글 목록을 한 화면에 표시한다.
@@ -411,6 +420,18 @@ export default function CommunityDetailScreen() {
     ]);
   };
 
+  // 2026.08.22 임재준
+  // 게시글 또는 댓글 신고 API를 호출한다.
+  const handleReportSubmit = async (reason: string, details?: string) => {
+    if (!post || !reportTarget) return;
+
+    if (reportTarget.type === 'post') {
+      await reportPostApi(post.id, reason, details);
+    } else if (reportTarget.type === 'reply' && reportTarget.replyId) {
+      await reportReplyApi(post.id, reportTarget.replyId, reason, details);
+    }
+  };
+
   // 2026.06.05 임재준
   // 영화 미리보기 클릭 시 영화 상세 화면으로 이동한다.
   const openMovieDetail = (movie?: MoviePreview) => {
@@ -501,6 +522,8 @@ export default function CommunityDetailScreen() {
   // 상세 화면 상단의 게시물 본문 영역을 카드 없이 자연스럽게 렌더링한다.
   // 2026.08.14 임재준
   // 스포일러 태그가 포함된 게시물일 경우 가림막 UI를 적용하고 투표 위젯을 렌더링한다.
+  // 2026.08.22 임재준
+  // 타인 게시물일 경우 헤더 영역에 신고 버튼을 노출한다.
   const renderPostHeader = () => {
     if (!post) return null;
 
@@ -524,6 +547,16 @@ export default function CommunityDetailScreen() {
               <View style={styles.spoilerBadge}>
                 <Text style={styles.spoilerBadgeText}>⚠️ 스포일러</Text>
               </View>
+            )}
+
+            {/* 2026.08.22 임재준: 타인 게시글 신고 버튼 */}
+            {!post.isMine && (
+              <Pressable
+                onPress={() => setReportTarget({ type: 'post' })}
+                style={styles.postReportButton}
+              >
+                <Ionicons name="flag-outline" size={18} color="#777" />
+              </Pressable>
             )}
           </View>
 
@@ -719,7 +752,7 @@ export default function CommunityDetailScreen() {
                 </View>
               </View>
 
-              {item.isMine && (
+              {item.isMine ? (
                 <View style={styles.replyActions}>
                   {/* 2026.08.14 임재준: 수정 확인 Alert 연결 */}
                   <Pressable
@@ -734,6 +767,16 @@ export default function CommunityDetailScreen() {
                     style={styles.replyActionButton}
                   >
                     <Ionicons name="trash-outline" size={16} color="#FF6B4A" />
+                  </Pressable>
+                </View>
+              ) : (
+                /* 2026.08.22 임재준: 타인 댓글 신고 버튼 */
+                <View style={styles.replyActions}>
+                  <Pressable
+                    onPress={() => setReportTarget({ type: 'reply', replyId: item.id })}
+                    style={styles.replyActionButton}
+                  >
+                    <Ionicons name="flag-outline" size={15} color="#666" />
                   </Pressable>
                 </View>
               )}
@@ -822,6 +865,14 @@ export default function CommunityDetailScreen() {
           )}
         </Pressable>
       </View>
+
+      {/* 2026.08.22 임재준: 게시글 및 댓글 신고 모달 */}
+      <ReportModal
+        visible={Boolean(reportTarget)}
+        targetType={reportTarget?.type ?? 'post'}
+        onClose={() => setReportTarget(null)}
+        onSubmit={handleReportSubmit}
+      />
 
       <KeyboardAccessory />
     </KeyboardAvoidingView>
@@ -929,6 +980,10 @@ const styles = StyleSheet.create({
     color: '#FF6B6B',
     fontSize: 11,
     fontWeight: '800',
+  },
+
+  postReportButton: {
+    padding: 8,
   },
 
   postTitle: {
