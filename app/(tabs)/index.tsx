@@ -21,7 +21,8 @@ import {
 import { WebView } from "react-native-webview";
 import client from "../../api/client";
 import { usePinStore } from "../../store/usePinStore";
-import { usePassedStore } from "../../store/usePassedStore"; 
+import { usePassedStore } from "../../store/usePassedStore";
+import { useRecommendationStore } from "../../store/useRecommendationStore";
 import {
   deletePinnedMovieApi,
   fetchPassedMoviesApi,
@@ -362,6 +363,12 @@ const ShortsItem = ({
         </Animated.View>
 
         <View style={styles.videoWrapper} pointerEvents="none">
+          <LinearGradient
+            colors={["transparent", "rgba(0, 0, 0, 0.75)", "#000000"]}
+            locations={[0, 0.65, 1]}
+            style={styles.videoTopFade}
+            pointerEvents="none"
+          />
           <WebView
             ref={webviewRef}
             source={{ html: htmlContent, baseUrl: "https://localhost" }}
@@ -372,6 +379,12 @@ const ShortsItem = ({
               if (JSON.parse(e.nativeEvent.data).type === "onReady") setIsReady(true);
             }}
             scrollEnabled={false}
+          />
+          <LinearGradient
+            colors={["#000000", "rgba(0, 0, 0, 0.75)", "transparent"]}
+            locations={[0, 0.35, 1]}
+            style={styles.videoBottomFade}
+            pointerEvents="none"
           />
         </View>
 
@@ -528,10 +541,12 @@ export default function HomeFeedScreen() {
       if (pageNumber === 1) setIsLoading(true);
       else setIsFetchingMore(true);
 
+      const isSubscribedOnly = await useRecommendationStore.getState().hydrate();
       const response = await client.get("/api/v1/movie_load/shorts", {
         params: {
           page: pageNumber,
           shuffle_seed: shuffleSeedRef.current,
+          mode: isSubscribedOnly ? "subscribed_only" : "all",
         },
       });
       const data = response.data;
@@ -724,7 +739,9 @@ const styles = StyleSheet.create({
   loadingContainer: { flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: "#0a0a0a" },
   loadingText: { color: "#FF5A36", marginTop: 10, fontWeight: "bold" },
   itemContainer: { width: WINDOW_WIDTH, backgroundColor: "black", justifyContent: "center", alignItems: "center" },
-  videoWrapper: { width: WINDOW_WIDTH, height: VIDEO_HEIGHT, zIndex: 3, backgroundColor: "transparent" },
+  videoWrapper: { width: WINDOW_WIDTH, height: VIDEO_HEIGHT, zIndex: 3, backgroundColor: "transparent", overflow: "visible" },
+  videoTopFade: { position: "absolute", left: 0, right: 0, bottom: VIDEO_HEIGHT - 10, height: 140, zIndex: 4 },
+  videoBottomFade: { position: "absolute", left: 0, right: 0, top: VIDEO_HEIGHT - 10, height: 140, zIndex: 4 },
   cardContainer: { justifyContent: "center", alignItems: "center" },
   centralPopupOverlay: { zIndex: 10, justifyContent: "center", alignItems: "center" },
   popupIconCircle: { position: "absolute", width: 140, height: 140, borderRadius: 70, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center", elevation: 8 },

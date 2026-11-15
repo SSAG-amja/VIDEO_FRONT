@@ -1,10 +1,11 @@
 import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Pressable } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Pressable, DeviceEventEmitter } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { signoutApi, verifyPasswordApi } from '../api/auth';
 import { getUserProfileApi } from '../api/user';
 import * as SecureStore from 'expo-secure-store';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
+import { useRecommendationStore } from '../store/useRecommendationStore';
 
 // --- Types ---
 interface MenuButtonProps {
@@ -23,7 +24,9 @@ interface MenuSwitchProps {
 // --- Components ---
 export default function Profile() {
   // 추천 설정 토글 상태 (true: 구독중인 것만, false: 모든 영화)
-  const [isSubscribedOnly, setIsSubscribedOnly] = useState(true);
+  const isSubscribedOnly = useRecommendationStore((state) => state.isSubscribedOnly);
+  const hydrateRecommendationMode = useRecommendationStore((state) => state.hydrate);
+  const setSubscribedOnly = useRecommendationStore((state) => state.setSubscribedOnly);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
   const [profile, setProfile] = useState({
     nickname: '',
@@ -62,12 +65,18 @@ export default function Profile() {
       };
 
       fetchProfile();
+      void hydrateRecommendationMode();
 
       return () => {
         isActive = false;
       };
-    }, [])
+    }, [hydrateRecommendationMode])
   );
+
+  const handleToggleSubscribedOnly = (value: boolean) => {
+    void setSubscribedOnly(value);
+    DeviceEventEmitter.emit('pinlm:home-refresh');
+  };
 
   // 1. 로그아웃 로직
   const handleLogout = () => {
@@ -234,7 +243,7 @@ const handleVerifyPassword = async () => {
           <MenuSwitch
             title="구독 중인 OTT만 추천받기"
             value={isSubscribedOnly}
-            onValueChange={setIsSubscribedOnly}
+            onValueChange={handleToggleSubscribedOnly}
           />
           <MenuButton 
             title="구독 중인 OTT 목록 수정" 
