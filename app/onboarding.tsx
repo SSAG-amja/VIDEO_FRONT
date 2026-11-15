@@ -4,9 +4,11 @@ import { router } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
 // 💡 api 경로를 프로젝트 구조에 맞게 수정하세요 (예: ../api/explore 또는 ../../api/explore)
-import { fetchMoviesByGenres, fetchSearchData, SEARCH_PAGE_SIZE } from '../api/explore'; 
+import { fetchMoviesByGenres, fetchSearchData } from '../api/explore';
 import { getUserProfileApi, submitOnboardingApi } from '../api/user';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
+
+const ONBOARDING_SEARCH_PAGE_SIZE = 12;
 
 const OTTS = [
   { id: 8, name: '넷플릭스' }, { id: 337, name: '디즈니 플러스' }, { id: 1883, name: '티빙' },
@@ -39,6 +41,7 @@ export default function OnboardingScreen() {
 
   // 🔍 모달 및 검색 관련 상태
   const [isSearchModalVisible, setIsSearchModalVisible] = useState(false);
+  const [hasSelectedInModal, setHasSelectedInModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -46,6 +49,10 @@ export default function OnboardingScreen() {
   const [searchHasMore, setSearchHasMore] = useState(false);
   const [isLoadingMoreSearch, setIsLoadingMoreSearch] = useState(false);
   const searchRequestIdRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
+  const lastLoadedGenresKeyRef = useRef<string | null>(null);
+
+  const getGenresKey = (genreIds: number[]) => [...genreIds].sort((a, b) => a - b).join(',');
 
   useEffect(() => {
     const fetchPreferences = async () => {
@@ -70,6 +77,7 @@ export default function OnboardingScreen() {
 
         setSelectedOtts(ottIds);
         setSelectedGenres(genreIds);
+        lastLoadedGenresKeyRef.current = genreIds.length > 0 ? getGenresKey(genreIds) : null;
         setSelectedMovies(favoriteMovies.map((movie: any) => movie.id));
         setMovies(favoriteMovies);
       } catch (error) {
@@ -84,7 +92,11 @@ export default function OnboardingScreen() {
 
   // 🔍 검색 디바운스 로직
   useEffect(() => {
-    if (searchQuery.trim() === '') {
+    searchAbortRef.current?.abort();
+    searchAbortRef.current = null;
+
+    const trimmedQuery = searchQuery.trim();
+    if (trimmedQuery === '') {
       searchRequestIdRef.current += 1;
       setSearchResults([]);
       setSearchPage(1);
@@ -92,24 +104,42 @@ export default function OnboardingScreen() {
       setIsSearching(false);
       return;
     }
+
     const requestId = searchRequestIdRef.current + 1;
     searchRequestIdRef.current = requestId;
     setIsSearching(true);
+
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await fetchSearchData(searchQuery, 'latest', 1, SEARCH_PAGE_SIZE);
-        if (requestId !== searchRequestIdRef.current) return;
+        const results = await fetchSearchData(
+          trimmedQuery,
+          'latest',
+          1,
+          ONBOARDING_SEARCH_PAGE_SIZE,
+          { titleOnly: true, signal: controller.signal }
+        );
+        if (controller.signal.aborted || requestId !== searchRequestIdRef.current) return;
         setSearchResults(results);
         setSearchPage(1);
-        setSearchHasMore(results.length === SEARCH_PAGE_SIZE);
+        setSearchHasMore(results.length === ONBOARDING_SEARCH_PAGE_SIZE);
       } catch (error) {
-        console.error("검색 중 오류 발생:", error);
+        if (!controller.signal.aborted) {
+          console.error("검색 중 오류 발생:", error);
+        }
       } finally {
-        if (requestId === searchRequestIdRef.current) setIsSearching(false);
+        if (!controller.signal.aborted && requestId === searchRequestIdRef.current) {
+          setIsSearching(false);
+        }
       }
-    }, 300);
+    }, 220);
 
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      clearTimeout(delayDebounceFn);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   const mergeSearchResults = (prev: any[], next: any[]) => {
@@ -118,19 +148,29 @@ export default function OnboardingScreen() {
   };
 
   const handleLoadMoreSearch = async () => {
-    if (isLoadingMoreSearch || isSearching || !searchHasMore || searchQuery.trim() === '') return;
+    const trimmedQuery = searchQuery.trim();
+    if (isLoadingMoreSearch || isSearching || !searchHasMore || trimmedQuery === '') return;
 
     const nextPage = searchPage + 1;
     const requestId = searchRequestIdRef.current;
+    const signal = searchAbortRef.current?.signal;
     setIsLoadingMoreSearch(true);
     try {
-      const results = await fetchSearchData(searchQuery, 'latest', nextPage, SEARCH_PAGE_SIZE);
-      if (requestId !== searchRequestIdRef.current) return;
+      const results = await fetchSearchData(
+        trimmedQuery,
+        'latest',
+        nextPage,
+        ONBOARDING_SEARCH_PAGE_SIZE,
+        { titleOnly: true, signal }
+      );
+      if (signal?.aborted || requestId !== searchRequestIdRef.current) return;
       setSearchResults((prev) => mergeSearchResults(prev, results));
       setSearchPage(nextPage);
-      setSearchHasMore(results.length === SEARCH_PAGE_SIZE);
+      setSearchHasMore(results.length === ONBOARDING_SEARCH_PAGE_SIZE);
     } catch (error) {
-      console.error("Search pagination failed:", error);
+      if (!signal?.aborted) {
+        console.error("Search pagination failed:", error);
+      }
     } finally {
       setIsLoadingMoreSearch(false);
     }
@@ -154,6 +194,7 @@ export default function OnboardingScreen() {
 
     // 2. 선택했다면 메인 그리드(movies) 화면 앞쪽에도 띄워주기 (시각적 피드백)
     if (!isAlreadySelected) {
+      setHasSelectedInModal(true);
       setMovies(prev => {
         if (!prev.some(m => m.id === movieId)) {
           const imageUrl = item.image || (item.posterPath ? `https://image.tmdb.org/t/p/w500${item.posterPath}` : 'https://via.placeholder.com/500x750?text=No+Image');
@@ -164,7 +205,13 @@ export default function OnboardingScreen() {
     }
   };
 
-  const loadMovies = async (targetPage: number, isInitial: boolean = false) => {
+  const closeSearchModal = () => {
+    setIsSearchModalVisible(false);
+    setHasSelectedInModal(false);
+    setSearchQuery('');
+  };
+
+  const loadMovies = async (targetPage: number, isInitial: boolean = false, resetSelection: boolean = false) => {
     if (selectedGenres.length === 0) return;
 
     if (isInitial) {
@@ -179,13 +226,18 @@ export default function OnboardingScreen() {
       const newMovies = await fetchMoviesByGenres(selectedGenres, targetPage);
 
       if (isInitial) {
-        setMovies(prev => {
-          const selectedMovieSet = new Set(selectedMovies);
-          const preferredMovies = prev.filter((movie: any) => selectedMovieSet.has(movie.id));
-          const existingIds = new Set(preferredMovies.map((movie: any) => movie.id));
-          const uniqueNewMovies = (newMovies || []).filter((movie: any) => !existingIds.has(movie.id));
-          return [...preferredMovies, ...uniqueNewMovies];
-        });
+        if (resetSelection) {
+          setMovies(newMovies || []);
+        } else {
+          setMovies(prev => {
+            const selectedMovieSet = new Set(selectedMovies);
+            const preferredMovies = prev.filter((movie: any) => selectedMovieSet.has(movie.id));
+            const existingIds = new Set(preferredMovies.map((movie: any) => movie.id));
+            const uniqueNewMovies = (newMovies || []).filter((movie: any) => !existingIds.has(movie.id));
+            return [...preferredMovies, ...uniqueNewMovies];
+          });
+        }
+        lastLoadedGenresKeyRef.current = getGenresKey(selectedGenres);
         setPage(targetPage);
       } else if (newMovies && newMovies.length > 0) {
         setMovies(prev => {
@@ -213,7 +265,15 @@ export default function OnboardingScreen() {
         Alert.alert('알림', '최소 1개 이상의 장르를 선택해주세요.');
         return;
       }
-      loadMovies(1, true);
+      const currentGenresKey = getGenresKey(selectedGenres);
+      const hasGenresChanged =
+        lastLoadedGenresKeyRef.current !== null &&
+        lastLoadedGenresKeyRef.current !== currentGenresKey;
+
+      if (hasGenresChanged) {
+        setSelectedMovies([]);
+      }
+      loadMovies(1, true, hasGenresChanged);
     } else {
       submitOnboardingData();
     }
@@ -350,7 +410,13 @@ export default function OnboardingScreen() {
             {step === 3 && (
               <View style={{ flex: 1 }}>
                 {/* 🔍 영화 직접 검색 버튼 */}
-                <Pressable style={styles.searchTriggerButton} onPress={() => setIsSearchModalVisible(true)}>
+                <Pressable
+                  style={styles.searchTriggerButton}
+                  onPress={() => {
+                    setHasSelectedInModal(false);
+                    setIsSearchModalVisible(true);
+                  }}
+                >
                   <Ionicons name="search" size={20} color="#aaa" />
                   <Text style={styles.searchTriggerText}>찾으시는 영화가 없나요? 직접 검색해보세요</Text>
                 </Pressable>
@@ -404,11 +470,11 @@ export default function OnboardingScreen() {
       </View>
 
       {/* 🔍 검색 모달 */}
-      <Modal visible={isSearchModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={() => setIsSearchModalVisible(false)}>
+      <Modal visible={isSearchModalVisible} animationType="slide" presentationStyle="pageSheet" onRequestClose={closeSearchModal}>
         <View style={styles.modalContainer}>
           <View style={styles.modalHeader}>
             <Text style={styles.modalTitle}>영화 검색</Text>
-            <Pressable onPress={() => { setIsSearchModalVisible(false); setSearchQuery(''); }}>
+            <Pressable onPress={closeSearchModal}>
               <Ionicons name="close" size={28} color="#fff" />
             </Pressable>
           </View>
@@ -431,7 +497,7 @@ export default function OnboardingScreen() {
               data={searchResults}
               keyExtractor={(item, index) => item.id ? item.id.toString() : index.toString()}
               renderItem={renderSearchItem}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 40 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: hasSelectedInModal ? 120 : 40 }}
               showsVerticalScrollIndicator={false}
               onEndReached={handleLoadMoreSearch}
               onEndReachedThreshold={0.5}
@@ -441,6 +507,14 @@ export default function OnboardingScreen() {
             <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
           ) : (
             <Text style={styles.noResultText}>추가하고 싶은 인생 영화를 검색해보세요.</Text>
+          )}
+
+          {hasSelectedInModal && (
+            <View style={styles.modalFooter}>
+              <Pressable style={styles.nextButton} onPress={closeSearchModal}>
+                <Text style={styles.nextButtonText}>영화 선택하기</Text>
+              </Pressable>
+            </View>
           )}
         </View>
       </Modal>
@@ -499,4 +573,5 @@ const styles = StyleSheet.create({
   searchItemTextBox: { flex: 1, marginLeft: 15, marginRight: 10 },
   searchItemTitle: { color: '#fff', fontSize: 15, fontWeight: 'bold' },
   searchItemBadge: { color: '#FF8A6B', fontSize: 12, fontWeight: '600', marginTop: 5 },
+  modalFooter: { position: 'absolute', bottom: 0, left: 0, right: 0, padding: 20, paddingBottom: 40, backgroundColor: '#111', borderTopWidth: 1, borderTopColor: '#222' },
 });

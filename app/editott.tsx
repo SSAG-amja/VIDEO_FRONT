@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // 💡 변경된 임포트
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
@@ -56,6 +56,7 @@ export default function EditOttScreen() {
     setIsSubmitting(true);
     try {
       await updateUserOttsApi(selectedOtts);
+      DeviceEventEmitter.emit('pinlm:home-refresh');
       Alert.alert('성공', '구독 정보가 수정되었습니다.');
       router.back();
     } catch (error) {
