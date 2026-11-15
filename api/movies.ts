@@ -13,9 +13,20 @@ export const fetchMovieDetailData = async (movieId: string | number) => {
   try {
     const response = await client.get(`/api/v1/explore/movies/${movieId}`);
     const data = response.data;
-    const streamingProviders = (data.providers ?? data.otts ?? []).filter(
+    const rawStreamingProviders = (data.providers ?? data.otts ?? []).filter(
       (provider: any) => !provider.type || provider.type === 'streaming'
     );
+    const hasStandardNetflix = rawStreamingProviders.some((provider: any) => {
+      const id = Number(provider.provider_id ?? provider.ott_id);
+      const name = String(provider.provider_name ?? provider.ott_name ?? '').trim().toLowerCase();
+      return id === 8 || name === 'netflix';
+    });
+    const streamingProviders = rawStreamingProviders.filter((provider: any) => {
+      if (!hasStandardNetflix) return true;
+      const id = Number(provider.provider_id ?? provider.ott_id);
+      const name = String(provider.provider_name ?? provider.ott_name ?? '').trim().toLowerCase();
+      return id !== 1796 && !name.includes('standard with ads');
+    });
 
     return {
       ...data,

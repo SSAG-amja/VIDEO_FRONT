@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
@@ -91,6 +91,7 @@ export default function PostWriteModal({
   const [movieResults, setMovieResults] = useState<PostTargetMovie[]>([]);
   const [isMovieSearching, setIsMovieSearching] = useState(false);
   const [selectedMovie, setSelectedMovie] = useState<PostTargetMovie | null>(initialMovie);
+  const movieSearchInputRef = useRef<TextInput>(null);
   const [myPlaylists, setMyPlaylists] = useState<PostTargetPlaylist[]>([]);
   const [selectedPlaylist, setSelectedPlaylist] = useState<PostTargetPlaylist | null>(initialPlaylist);
   const [postTitle, setPostTitle] = useState('');
@@ -298,30 +299,49 @@ export default function PostWriteModal({
             </View>
           )}
 
-          <View style={[styles.targetBox, hasTaggedTarget && styles.targetBoxTagged]}>
-            <View style={styles.targetIcon}>
-              <Ionicons name={writeType === 'movie' ? 'film-outline' : 'albums-outline'} size={20} color="#FF6B4A" />
-            </View>
-            <View style={styles.targetCopy}>
-              <Text style={styles.targetStatus}>{targetStatusLabel}</Text>
-              <Text style={styles.targetLabel} numberOfLines={1}>{targetLabel}</Text>
-            </View>
-          </View>
-
-          {!lockTarget && writeType === 'movie' && (
+          {!lockTarget && writeType === 'movie' ? (
             <View style={styles.targetPicker}>
-              <TextInput
-                style={styles.searchField}
-                placeholder="영화 검색"
-                placeholderTextColor="#666"
-                value={movieQuery}
-                onChangeText={(text) => {
-                  setMovieQuery(text);
-                  if (selectedMovie && selectedMovie.title !== text) setSelectedMovie(null);
-                }}
-                returnKeyType="search"
-                inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
-              />
+              <Pressable
+                style={[styles.targetBox, styles.unifiedMovieBox, hasTaggedTarget && styles.targetBoxTagged]}
+                onPress={() => movieSearchInputRef.current?.focus()}
+              >
+                {selectedMovie && posterUrl(selectedMovie) ? (
+                  <Image source={{ uri: posterUrl(selectedMovie) }} style={styles.selectedTargetPoster} />
+                ) : (
+                  <View style={styles.targetIcon}>
+                    <Ionicons name="film-outline" size={20} color="#FF6B4A" />
+                  </View>
+                )}
+                <View style={styles.targetCopy}>
+                  <Text style={styles.targetStatus}>{targetStatusLabel}</Text>
+                  <TextInput
+                    ref={movieSearchInputRef}
+                    style={styles.unifiedMovieInput}
+                    placeholder="영화를 검색해 선택해주세요"
+                    placeholderTextColor="#777"
+                    value={movieQuery}
+                    onChangeText={(text) => {
+                      setMovieQuery(text);
+                      if (selectedMovie && selectedMovie.title !== text) setSelectedMovie(null);
+                    }}
+                    returnKeyType="search"
+                    inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+                  />
+                </View>
+                {(movieQuery.length > 0 || selectedMovie) && (
+                  <Pressable
+                    hitSlop={8}
+                    onPress={() => {
+                      setSelectedMovie(null);
+                      setMovieQuery('');
+                      setMovieResults([]);
+                      movieSearchInputRef.current?.focus();
+                    }}
+                  >
+                    <Ionicons name="close-circle" size={20} color="#777" />
+                  </Pressable>
+                )}
+              </Pressable>
               {isMovieSearching && <ActivityIndicator color="#FF6B4A" style={styles.searching} />}
               {movieResults.slice(0, 6).map((movie) => (
                 <Pressable
@@ -331,12 +351,23 @@ export default function PostWriteModal({
                     setSelectedMovie(movie);
                     setMovieQuery(movie.title);
                     setMovieResults([]);
+                    Keyboard.dismiss();
                   }}
                 >
                   <Image source={{ uri: posterUrl(movie) }} style={styles.targetPoster} />
                   <Text style={styles.targetTitle} numberOfLines={1}>{movie.title}</Text>
                 </Pressable>
               ))}
+            </View>
+          ) : (
+            <View style={[styles.targetBox, hasTaggedTarget && styles.targetBoxTagged]}>
+              <View style={styles.targetIcon}>
+                <Ionicons name={writeType === 'movie' ? 'film-outline' : 'albums-outline'} size={20} color="#FF6B4A" />
+              </View>
+              <View style={styles.targetCopy}>
+                <Text style={styles.targetStatus}>{targetStatusLabel}</Text>
+                <Text style={styles.targetLabel} numberOfLines={1}>{targetLabel}</Text>
+              </View>
             </View>
           )}
 
@@ -499,7 +530,9 @@ const styles = StyleSheet.create({
   targetStatus: { color: '#888', fontSize: 12, fontWeight: '800', marginBottom: 4 },
   targetLabel: { color: '#fff', fontSize: 15, fontWeight: '900' },
   targetPicker: { marginBottom: 14 },
-  searchField: { height: 44, borderRadius: 12, paddingHorizontal: 14, color: '#fff', backgroundColor: '#151515', borderWidth: 1, borderColor: '#252525', marginBottom: 8 },
+  unifiedMovieBox: { marginBottom: 8 },
+  selectedTargetPoster: { width: 40, height: 56, borderRadius: 8, backgroundColor: '#222', marginRight: 12 },
+  unifiedMovieInput: { color: '#fff', fontSize: 15, fontWeight: '800', paddingVertical: 0, paddingHorizontal: 0 },
   searching: { marginVertical: 8 },
   targetOption: { flexDirection: 'row', alignItems: 'center', minHeight: 62, padding: 10, borderRadius: 12, backgroundColor: '#151515', borderWidth: 1, borderColor: '#242424', marginBottom: 8 },
   targetOptionActive: { borderColor: '#FF6B4A', backgroundColor: 'rgba(255,107,74,0.10)' },

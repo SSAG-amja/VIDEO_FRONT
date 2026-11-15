@@ -17,6 +17,7 @@ const toStoredMovie = (movie: any) => ({
   id: Number(movie.movie_id ?? movie.id),
   title: movie.movie_title ?? movie.title ?? '',
   image: posterUrl(movie.poster_path ?? movie.posterPath),
+  watchedAt: movie.watched_at ?? movie.watchedAt ?? null,
 });
 
 // 2026.05.13 박현식

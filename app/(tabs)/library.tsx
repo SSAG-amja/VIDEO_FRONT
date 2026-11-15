@@ -148,6 +148,9 @@ export default function LibraryScreen() {
           
           timeA = lastMovieA && lastMovieA.addedAt ? new Date(lastMovieA.addedAt).getTime() : Number(a.id) || 0;
           timeB = lastMovieB && lastMovieB.addedAt ? new Date(lastMovieB.addedAt).getTime() : Number(b.id) || 0;
+        } else if (activeTab === 'Watched') {
+          timeA = a.watchedAt ? new Date(a.watchedAt).getTime() : 0;
+          timeB = b.watchedAt ? new Date(b.watchedAt).getTime() : 0;
         } else {
           timeA = Number(a.id) || 0; 
           timeB = Number(b.id) || 0;
@@ -549,15 +552,24 @@ export default function LibraryScreen() {
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>새 재생목록 추가</Text>
-            <TextInput style={styles.textInput} placeholder="목록 이름" placeholderTextColor="#666" value={newPlaylistName} onChangeText={setNewPlaylistName} autoFocus inputAccessoryViewID={KEYBOARD_ACCESSORY_ID} />
-            <View style={styles.privacySelector}>
-              <Pressable style={[styles.privacyOption, !isNewPlaylistPublic && styles.privacyOptionActive]} onPress={() => setIsNewPlaylistPublic(false)}>
-                <Ionicons name="lock-closed" size={20} color={!isNewPlaylistPublic ? "#FF5A36" : "#666"} />
-                <Text style={[styles.privacyText, !isNewPlaylistPublic && styles.privacyTextActive]}>비공개</Text>
-              </Pressable>
-              <Pressable style={[styles.privacyOption, isNewPlaylistPublic && styles.privacyOptionActive]} onPress={() => setIsNewPlaylistPublic(true)}>
-                <Ionicons name="lock-open" size={20} color={isNewPlaylistPublic ? "#FF5A36" : "#666"} />
-                <Text style={[styles.privacyText, isNewPlaylistPublic && styles.privacyTextActive]}>공개</Text>
+            <View style={styles.inputWithPrivacyRow}>
+              <TextInput
+                style={[styles.textInput, styles.textInputFlex]}
+                placeholder="목록 이름"
+                placeholderTextColor="#666"
+                value={newPlaylistName}
+                onChangeText={setNewPlaylistName}
+                autoFocus
+                inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+              />
+              <Pressable
+                style={[styles.privacyToggleBtn, isNewPlaylistPublic && styles.privacyToggleBtnPublic]}
+                onPress={() => setIsNewPlaylistPublic((prev) => !prev)}
+              >
+                <Ionicons name={isNewPlaylistPublic ? "lock-open" : "lock-closed"} size={18} color={isNewPlaylistPublic ? "#FF5A36" : "#aaa"} />
+                <Text style={[styles.privacyToggleText, isNewPlaylistPublic && styles.privacyToggleTextPublic]}>
+                  {isNewPlaylistPublic ? '공개' : '비공개'}
+                </Text>
               </Pressable>
             </View>
             <View style={styles.modalButtonContainer}>
@@ -621,13 +633,13 @@ const styles = StyleSheet.create({
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'center', alignItems: 'center', padding: 20 },
   modalContent: { width: '100%', backgroundColor: '#1a1a1a', borderRadius: 16, padding: 24, borderWidth: 1, borderColor: '#333' },
   modalTitle: { color: '#fff', fontSize: 18, fontWeight: 'bold', marginBottom: 20, textAlign: 'center' },
+  inputWithPrivacyRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 24 },
   textInput: { backgroundColor: '#0a0a0a', color: '#fff', borderRadius: 8, padding: 15, marginBottom: 20, borderWidth: 1, borderColor: '#333' },
-  
-  privacySelector: { flexDirection: 'row', gap: 10, marginBottom: 24 },
-  privacyOption: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 12, borderRadius: 8, borderWidth: 1, borderColor: '#333', backgroundColor: '#111', gap: 8 },
-  privacyOptionActive: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.1)' },
-  privacyText: { color: '#666', fontSize: 15, fontWeight: 'bold' },
-  privacyTextActive: { color: '#FF5A36' },
+  textInputFlex: { flex: 1, marginBottom: 0 },
+  privacyToggleBtn: { width: 100, height: 50, borderRadius: 8, borderWidth: 1, borderColor: '#333', backgroundColor: '#0a0a0a', flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6 },
+  privacyToggleBtnPublic: { borderColor: '#FF5A36', backgroundColor: 'rgba(255, 90, 54, 0.1)' },
+  privacyToggleText: { color: '#aaa', fontSize: 13, fontWeight: 'bold' },
+  privacyToggleTextPublic: { color: '#FF5A36' },
 
   modalButtonContainer: { flexDirection: 'row', gap: 10 },
   modalButton: { flex: 1, paddingVertical: 14, borderRadius: 8, alignItems: 'center' },

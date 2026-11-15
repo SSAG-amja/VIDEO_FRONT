@@ -2,7 +2,8 @@ import React, { useState, useRef, useEffect } from 'react';
 import { 
   View, Text, StyleSheet, ImageBackground, ScrollView, 
   Pressable, Image, Animated, Dimensions, BackHandler,
-  Modal, Alert, TextInput, Linking, KeyboardAvoidingView, Platform, Keyboard
+  Modal, Alert, TextInput, Linking, KeyboardAvoidingView, Platform, Keyboard,
+  useWindowDimensions
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -144,6 +145,10 @@ export default function DetailScreen() {
 
     fetchSubscribedOtts();
   }, []);
+
+  const { width: windowWidth } = useWindowDimensions();
+  const [trailerWidth, setTrailerWidth] = useState(Math.max(windowWidth - 40, 0));
+  const trailerHeight = Math.round((trailerWidth > 0 ? trailerWidth : Math.max(windowWidth - 40, 0)) * (9 / 16));
 
   const [isExpanded, setIsExpanded] = useState(false);
   const translateY = useRef(new Animated.Value(0)).current;
@@ -412,9 +417,18 @@ export default function DetailScreen() {
             {movieDetail.youtubeId && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>공식 예고편</Text>
-                <View style={styles.videoContainer}>
+                <View
+                  style={styles.videoContainer}
+                  onLayout={(e) => {
+                    const width = Math.round(e.nativeEvent.layout.width);
+                    if (width > 0 && width !== trailerWidth) {
+                      setTrailerWidth(width);
+                    }
+                  }}
+                >
                   <YoutubePlayer
-                    height={210}
+                    width={trailerWidth > 0 ? trailerWidth : undefined}
+                    height={trailerHeight}
                     play={false}
                     videoId={movieDetail.youtubeId}
                     webViewProps={{
@@ -650,36 +664,38 @@ export default function DetailScreen() {
                   </>
                 ) : (
                   <View style={styles.createFormContainer}>
-                    <TextInput
-                      style={styles.textInput}
-                      placeholder="재생목록 이름을 입력하세요"
-                      placeholderTextColor="#666"
-                      value={newPlaylistName}
-                      onChangeText={setNewPlaylistName}
-                      autoFocus={true}
-                      returnKeyType="done"
-                      onSubmitEditing={Keyboard.dismiss}
-                      inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
-                    />
+                    <View style={styles.inputWithPrivacyRow}>
+                      <TextInput
+                        style={[styles.textInput, styles.textInputFlex]}
+                        placeholder="재생목록 이름을 입력하세요"
+                        placeholderTextColor="#666"
+                        value={newPlaylistName}
+                        onChangeText={setNewPlaylistName}
+                        autoFocus={true}
+                        returnKeyType="done"
+                        onSubmitEditing={Keyboard.dismiss}
+                        inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+                      />
 
-                    <View style={styles.privacySelector}>
-                      <Pressable 
-                        style={[styles.privacyOption, !isNewPlaylistPublic && styles.privacyOptionActive]} 
-                        onPress={() => setIsNewPlaylistPublic(false)}
+                      <Pressable
+                        style={[
+                          styles.privacyToggleBtn,
+                          isNewPlaylistPublic && styles.privacyToggleBtnPublic,
+                        ]}
+                        onPress={() => setIsNewPlaylistPublic((prev) => !prev)}
                       >
-                        <Ionicons name="lock-closed" size={18} color={!isNewPlaylistPublic ? "#FF5A36" : "#666"} />
-                        <Text style={[styles.privacyText, !isNewPlaylistPublic && styles.privacyTextActive]}>
-                          비공개
-                        </Text>
-                      </Pressable>
-                      
-                      <Pressable 
-                        style={[styles.privacyOption, isNewPlaylistPublic && styles.privacyOptionActive]} 
-                        onPress={() => setIsNewPlaylistPublic(true)}
-                      >
-                        <Ionicons name="lock-open" size={18} color={isNewPlaylistPublic ? "#FF5A36" : "#666"} />
-                        <Text style={[styles.privacyText, isNewPlaylistPublic && styles.privacyTextActive]}>
-                          공개
+                        <Ionicons
+                          name={isNewPlaylistPublic ? 'lock-open' : 'lock-closed'}
+                          size={18}
+                          color={isNewPlaylistPublic ? '#FF5A36' : '#aaa'}
+                        />
+                        <Text
+                          style={[
+                            styles.privacyToggleText,
+                            isNewPlaylistPublic && styles.privacyToggleTextPublic,
+                          ]}
+                        >
+                          {isNewPlaylistPublic ? '공개' : '비공개'}
                         </Text>
                       </Pressable>
                     </View>
@@ -835,6 +851,8 @@ const styles = StyleSheet.create({
   },
   
   videoContainer: {
+    width: '100%',
+    aspectRatio: 16 / 9,
     borderRadius: 12,
     overflow: 'hidden',
     backgroundColor: '#000',
@@ -1120,6 +1138,13 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
 
+  inputWithPrivacyRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginBottom: 20,
+  },
+
   textInput: {
     backgroundColor: '#0a0a0a',
     color: '#fff',
@@ -1131,37 +1156,36 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
-  privacySelector: {
-    flexDirection: 'row',
-    gap: 10,
-    marginBottom: 20,
+  textInputFlex: {
+    flex: 1,
+    marginBottom: 0,
   },
 
-  privacyOption: {
-    flex: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 10,
+  privacyToggleBtn: {
+    width: 100,
+    height: 52,
+    borderRadius: 8,
     borderWidth: 1,
     borderColor: '#333',
     backgroundColor: '#0a0a0a',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
     gap: 6,
   },
 
-  privacyOptionActive: {
+  privacyToggleBtnPublic: {
     borderColor: '#FF5A36',
-    backgroundColor: 'rgba(255, 90, 54, 0.05)',
+    backgroundColor: 'rgba(255, 90, 54, 0.08)',
   },
 
-  privacyText: {
-    color: '#666',
-    fontSize: 14,
+  privacyToggleText: {
+    color: '#aaa',
+    fontSize: 13,
     fontWeight: 'bold',
   },
 
-  privacyTextActive: {
+  privacyToggleTextPublic: {
     color: '#FF5A36',
   },
 
