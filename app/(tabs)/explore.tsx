@@ -9,6 +9,7 @@ import {
   Pressable,
   ActivityIndicator,
   Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -28,9 +29,26 @@ const MOOD_TAGS = [
   '#평점 높은 명작',
   '#도파민 폭발 액션',
   '#가볍게 웃기 좋은',
+  '#설렘 가득 로맨스',
+  '#손에 땀을 쥐는 스릴러',
+  '#등골 오싹한 공포',
+  '#상상력 자극 SF·판타지',
+  '#감성 충전 드라마',
+  '#동심 자극 애니메이션',
+  '#여운이 남는 음악·예술',
 ];
 
+const splitIntoColumns = <T,>(items: T[], columnCount: number): T[][] => {
+  const columns: T[][] = Array.from({ length: columnCount }, () => []);
+  items.forEach((item, index) => {
+    columns[index % columnCount].push(item);
+  });
+  return columns;
+};
+
 export default function ExploreScreen() {
+  const { width: windowWidth } = useWindowDimensions();
+  const numColumns = windowWidth >= 900 ? 4 : windowWidth >= 600 ? 3 : 2;
   const [activeTag, setActiveTag] = useState(MOOD_TAGS[0]);
 
   // 🔍 검색 관련 상태
@@ -61,12 +79,6 @@ export default function ExploreScreen() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const withCardHeights = (movies: any[]) =>
-    movies.map((m: any) => ({
-      ...m,
-      height: m.height || Math.floor(Math.random() * (300 - 200 + 1)) + 200,
-    }));
-
   const mergeSearchResults = (prev: any[], next: any[]) => {
     const existingIds = new Set(prev.map((movie) => movie.id));
     return [...prev, ...next.filter((movie) => !existingIds.has(movie.id))];
@@ -79,13 +91,7 @@ export default function ExploreScreen() {
 
       try {
         const results = await fetchRecommendData(activeTag);
-
-        const moviesWithHeight = results.map((m: any) => ({
-          ...m,
-          height: Math.floor(Math.random() * (300 - 200 + 1)) + 200,
-        }));
-
-        setDefaultMovies(moviesWithHeight);
+        setDefaultMovies(results);
       } finally {
         setIsLoadingTags(false);
       }
@@ -124,13 +130,11 @@ export default function ExploreScreen() {
     }
 
     try {
-      const results = withCardHeights(
-        await fetchSearchData(
-          debouncedSearchQuery,
-          sortOrder,
-          targetPage,
-          SEARCH_PAGE_SIZE
-        )
+      const results = await fetchSearchData(
+        debouncedSearchQuery,
+        sortOrder,
+        targetPage,
+        SEARCH_PAGE_SIZE
       );
 
       if (requestId !== searchRequestIdRef.current) return;
@@ -178,13 +182,11 @@ export default function ExploreScreen() {
       setIsSearching(true);
 
       try {
-        const results = withCardHeights(
-          await fetchSearchData(
-            debouncedSearchQuery,
-            sortOrder,
-            1,
-            SEARCH_PAGE_SIZE
-          )
+        const results = await fetchSearchData(
+          debouncedSearchQuery,
+          sortOrder,
+          1,
+          SEARCH_PAGE_SIZE
         );
 
         if (requestId !== searchRequestIdRef.current) return;
@@ -202,15 +204,12 @@ export default function ExploreScreen() {
     loadDebouncedSearchResults();
   }, [debouncedSearchQuery, sortOrder]);
 
-  const leftDefault = defaultMovies.filter((_, i) => i % 2 === 0);
-  const rightDefault = defaultMovies.filter((_, i) => i % 2 !== 0);
-
-  const leftSearch = searchResults.filter((_, i) => i % 2 === 0);
-  const rightSearch = searchResults.filter((_, i) => i % 2 !== 0);
+  const defaultColumns = splitIntoColumns(defaultMovies, numColumns);
+  const searchColumns = splitIntoColumns(searchResults, numColumns);
 
   const MovieCard = ({ item }: { item: any }) => (
     <Pressable
-      style={[styles.cardContainer, { height: item.height || 220 }]}
+      style={styles.cardContainer}
       onPress={() => {
         const safeMovieData = {
           id: item.id,
@@ -361,17 +360,13 @@ export default function ExploreScreen() {
             ) : searchResults.length > 0 ? (
               <>
                 <View style={styles.masonryContainer}>
-                  <View style={styles.column}>
-                    {leftSearch.map((m) => (
-                      <MovieCard key={m.id} item={m} />
-                    ))}
-                  </View>
-
-                  <View style={styles.column}>
-                    {rightSearch.map((m) => (
-                      <MovieCard key={m.id} item={m} />
-                    ))}
-                  </View>
+                  {searchColumns.map((columnItems, colIndex) => (
+                    <View key={`search-col-${colIndex}`} style={styles.column}>
+                      {columnItems.map((m) => (
+                        <MovieCard key={m.id} item={m} />
+                      ))}
+                    </View>
+                  ))}
                 </View>
 
                 {isLoadingMoreSearch && (
@@ -393,6 +388,8 @@ export default function ExploreScreen() {
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
+              nestedScrollEnabled
+              decelerationRate="fast"
               contentContainerStyle={styles.tagScroll}
             >
               {MOOD_TAGS.map((tag) => (
@@ -427,17 +424,13 @@ export default function ExploreScreen() {
               />
             ) : (
               <View style={styles.masonryContainer}>
-                <View style={styles.column}>
-                  {leftDefault.map((m) => (
-                    <MovieCard key={m.id} item={m} />
-                  ))}
-                </View>
-
-                <View style={styles.column}>
-                  {rightDefault.map((m) => (
-                    <MovieCard key={m.id} item={m} />
-                  ))}
-                </View>
+                {defaultColumns.map((columnItems, colIndex) => (
+                  <View key={`default-col-${colIndex}`} style={styles.column}>
+                    {columnItems.map((m) => (
+                      <MovieCard key={m.id} item={m} />
+                    ))}
+                  </View>
+                ))}
               </View>
             )}
           </ScrollView>
@@ -570,13 +563,16 @@ const styles = StyleSheet.create({
   },
 
   cardContainer: {
+    width: '100%',
+    aspectRatio: 2 / 3,
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#222',
   },
 
   cardImage: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
     justifyContent: 'flex-end',
   },
 

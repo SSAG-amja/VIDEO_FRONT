@@ -1,7 +1,13 @@
+import { isCancel } from 'axios';
 import client from './client';
 
 type SortOrder = 'latest' | 'likes' | 'rating';
 export const SEARCH_PAGE_SIZE = 20;
+
+type SearchOptions = {
+  titleOnly?: boolean;
+  signal?: AbortSignal;
+};
 
 const posterUrl = (posterPath?: string | null, fallbackSize = '500x750') => {
   if (!posterPath) {
@@ -29,7 +35,8 @@ export const fetchSearchData = async (
   query: string,
   sort: SortOrder = 'latest',
   page: number = 1,
-  limit: number = SEARCH_PAGE_SIZE
+  limit: number = SEARCH_PAGE_SIZE,
+  options?: SearchOptions
 ) => {
   try {
     const response = await client.get('/api/v1/explore/movies/search', {
@@ -37,7 +44,9 @@ export const fetchSearchData = async (
         query,
         skip: (page - 1) * limit,
         limit,
+        ...(options?.titleOnly ? { title_only: true } : {}),
       },
+      signal: options?.signal,
     });
 
     const movies = (response.data.data || []).map(toMovieCard);
@@ -46,6 +55,9 @@ export const fetchSearchData = async (
     }
     return movies;
   } catch (error) {
+    if (isCancel(error) || options?.signal?.aborted) {
+      return [];
+    }
     console.error('Search API call failed:', error);
     return [];
   }
