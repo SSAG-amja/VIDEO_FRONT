@@ -17,11 +17,13 @@ export const submitOnboardingApi = async (onboardingData: {
   genres: number[];
   movies: number[];
 }) => {
-  const [ottsResponse, genresResponse, moviesResponse] = await Promise.all([
+  const [ottsResponse, genresResponse] = await Promise.all([
     client.put('/api/v1/user/user/otts', { ott_ids: onboardingData.otts }),
     client.put('/api/v1/user/user/genres', { genre_ids: onboardingData.genres }),
-    client.put('/api/v1/user/user/favorite-movies', { movie_ids: onboardingData.movies }),
   ]);
+  const moviesResponse = await client.put('/api/v1/user/user/favorite-movies', {
+    movie_ids: onboardingData.movies,
+  });
 
   return {
     otts: ottsResponse.data,

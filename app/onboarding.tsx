@@ -10,6 +10,8 @@ import { getUserProfileApi, submitOnboardingApi } from '../api/user';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 
 import { AppAlert } from '../store/useAlertStore';
+import { usePassedStore } from '../store/usePassedStore';
+import { usePinStore } from '../store/usePinStore';
 const ONBOARDING_SEARCH_PAGE_SIZE = 12;
 
 const OTTS = [
@@ -308,6 +310,8 @@ export default function OnboardingScreen() {
         genres: selectedGenres,
         movies: selectedMovies,
       });
+      usePinStore.getState().clearPinnedMovies();
+      usePassedStore.getState().clearPassedMovies();
       router.replace('/(tabs)'); 
     } catch (error) {
       console.error('온보딩 저장 실패:', error);
