@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -17,6 +16,7 @@ import KeyboardAccessory, {
   KEYBOARD_ACCESSORY_ID,
 } from '../components/KeyboardAccessory';
 
+import { AppAlert } from '../store/useAlertStore';
 export default function EditPasswordScreen() {
   const router = useRouter();
   const { passwordChangeToken } = useLocalSearchParams<{
@@ -33,24 +33,24 @@ export default function EditPasswordScreen() {
   // 현재 비밀번호 검증 단계에서 발급받은 password_change_token을 함께 전달해 비밀번호 변경 권한을 검증한다.
   const handleUpdatePassword = async () => {
     if (!passwordChangeToken) {
-      Alert.alert('오류', '비밀번호 변경 인증 정보가 없습니다. 다시 인증해주세요.', [
+      AppAlert.alert('오류', '비밀번호 변경 인증 정보가 없습니다. 다시 인증해주세요.', [
         { text: '확인', onPress: () => router.back() },
       ]);
       return;
     }
 
     if (!newPassword || !newPasswordConfirm) {
-      Alert.alert('알림', '새 비밀번호를 모두 입력해주세요.');
+      AppAlert.alert('알림', '새 비밀번호를 모두 입력해주세요.');
       return;
     }
 
     if (newPassword.length < 8 || newPasswordConfirm.length < 8) {
-      Alert.alert('알림', '비밀번호는 8자리 이상이어야 합니다.');
+      AppAlert.alert('알림', '비밀번호는 8자리 이상이어야 합니다.');
       return;
     }
 
     if (newPassword !== newPasswordConfirm) {
-      Alert.alert('알림', '새 비밀번호와 비밀번호 확인이 일치하지 않습니다.');
+      AppAlert.alert('알림', '새 비밀번호와 비밀번호 확인이 일치하지 않습니다.');
       return;
     }
 
@@ -63,7 +63,7 @@ export default function EditPasswordScreen() {
         new_password_confirm: newPasswordConfirm,
       });
 
-      Alert.alert('성공', '비밀번호가 변경되었습니다.', [
+      AppAlert.alert('성공', '비밀번호가 변경되었습니다.', [
         { text: '확인', onPress: () => router.back() },
       ]);
     } catch (error: any) {
@@ -74,7 +74,7 @@ export default function EditPasswordScreen() {
       const message =
         error?.response?.data?.detail || '비밀번호 변경에 실패했습니다.';
 
-      Alert.alert(
+      AppAlert.alert(
         '오류',
         typeof message === 'string'
           ? message

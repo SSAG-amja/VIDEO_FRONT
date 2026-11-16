@@ -2,10 +2,12 @@ import { isCancel } from 'axios';
 import client from './client';
 
 type SortOrder = 'latest' | 'likes' | 'rating';
+export type SearchType = 'all' | 'title' | 'director' | 'actor';
 export const SEARCH_PAGE_SIZE = 20;
 
 type SearchOptions = {
   titleOnly?: boolean;
+  searchType?: SearchType;
   signal?: AbortSignal;
 };
 
@@ -45,6 +47,9 @@ export const fetchSearchData = async (
         skip: (page - 1) * limit,
         limit,
         ...(options?.titleOnly ? { title_only: true } : {}),
+        ...(options?.searchType && options.searchType !== 'all'
+          ? { search_type: options.searchType }
+          : {}),
       },
       signal: options?.signal,
     });

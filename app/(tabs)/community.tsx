@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  DeviceEventEmitter, // 2026.08.22 임재준: 투표 동기화 이벤트 수신을 위해 추가
+  DeviceEventEmitter,
+  // 2026.08.22 임재준: 투표 동기화 이벤트 수신을 위해 추가
   FlatList,
   Image,
   Keyboard,
@@ -34,6 +34,7 @@ import PollWidget from '../../components/PollWidget';
 import ReportModal from '../../components/ReportModal';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
+import { AppAlert } from '../../store/useAlertStore';
 type FeedFilter = 'all' | 'playlist' | 'movie';
 type SortMode = 'popular' | 'latest';
 
@@ -91,7 +92,7 @@ export default function CommunityScreen() {
       setPosts(await fetchPostsApi());
     } catch (error) {
       console.error('Post API Load Error:', error);
-      Alert.alert('오류', '게시물을 불러오지 못했습니다.');
+      AppAlert.alert('오류', '게시물을 불러오지 못했습니다.');
     } finally {
       setIsLoading(false);
     }
@@ -105,7 +106,7 @@ export default function CommunityScreen() {
       setPosts(await fetchPostsApi());
     } catch (error) {
       console.error('Post API Refresh Error:', error);
-      Alert.alert('오류', '게시물을 새로고침하지 못했습니다.');
+      AppAlert.alert('오류', '게시물을 새로고침하지 못했습니다.');
     } finally {
       setIsRefreshing(false);
     }
@@ -153,7 +154,7 @@ export default function CommunityScreen() {
       Keyboard.dismiss();
     } catch (error) {
       console.error('Create Post API Error:', error);
-      Alert.alert('등록 실패', '게시물을 등록하지 못했습니다.');
+      AppAlert.alert('등록 실패', '게시물을 등록하지 못했습니다.');
     } finally {
       setIsSubmitting(false);
     }
@@ -176,7 +177,7 @@ export default function CommunityScreen() {
       Keyboard.dismiss();
     } catch (error) {
       console.error('Update Post API Error:', error);
-      Alert.alert('수정 실패', '게시물을 수정하지 못했습니다.');
+      AppAlert.alert('수정 실패', '게시물을 수정하지 못했습니다.');
     } finally {
       setIsSubmitting(false);
     }
@@ -239,7 +240,7 @@ export default function CommunityScreen() {
     } catch (error) {
       console.error('Post Like API Error:', error);
       setPosts(previous);
-      Alert.alert('오류', '좋아요 상태를 변경하지 못했습니다.');
+      AppAlert.alert('오류', '좋아요 상태를 변경하지 못했습니다.');
     }
   };
 
@@ -259,7 +260,7 @@ export default function CommunityScreen() {
   // 2026.05.18 박현식
   // 게시물 삭제 확인창을 띄우고 삭제 실패 시 이전 목록으로 되돌린다.
   const confirmDeletePost = (post: CommunityPost) => {
-    Alert.alert('게시물 삭제', '게시물을 삭제하시겠습니까?', [
+    AppAlert.alert('게시물 삭제', '게시물을 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -272,7 +273,7 @@ export default function CommunityScreen() {
           } catch (error) {
             console.error('Delete Post API Error:', error);
             setPosts(previous);
-            Alert.alert('삭제 실패', '게시물을 삭제하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '게시물을 삭제하지 못했습니다.');
           }
         },
       },

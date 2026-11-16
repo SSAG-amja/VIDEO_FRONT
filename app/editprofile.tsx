@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert, ScrollView, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet, ScrollView, KeyboardAvoidingView, Platform, Modal, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
@@ -8,6 +8,7 @@ import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/Keyboard
 // ⚠️ 위에서 추가한 API를 임포트합니다. 경로에 맞게 수정하세요.
 import { getUserProfileApi, updateUserProfileApi } from '../api/user';
 
+import { AppAlert } from '../store/useAlertStore';
 // --- 커스텀 데이트 피커 모달 컴포넌트 (iOS용) ---
 interface DatePickerModalProps {
   isVisible: boolean;
@@ -140,7 +141,7 @@ export default function EditProfileScreen() {
         });
       } catch (error) {
         console.error('유저 정보 로드 실패:', error);
-        Alert.alert('오류', '사용자 정보를 불러오는데 실패했습니다.');
+        AppAlert.alert('오류', '사용자 정보를 불러오는데 실패했습니다.');
         router.back();
       } finally {
         setIsLoading(false);
@@ -166,11 +167,11 @@ export default function EditProfileScreen() {
       };
 
       await updateUserProfileApi(updatePayload);
-      Alert.alert('성공', '개인정보가 수정되었습니다.');
+      AppAlert.alert('성공', '개인정보가 수정되었습니다.');
       router.back(); 
     } catch (error: any) {
       console.error(error);
-      Alert.alert('오류', '정보 수정에 실패했습니다.');
+      AppAlert.alert('오류', '정보 수정에 실패했습니다.');
     }
   };
 

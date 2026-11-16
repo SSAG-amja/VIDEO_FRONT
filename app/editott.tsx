@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, Alert, DeviceEventEmitter } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ActivityIndicator, DeviceEventEmitter } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // 💡 변경된 임포트
 import { useRouter } from 'expo-router';
 import { Feather } from '@expo/vector-icons';
 
 import { getUserOttsApi, updateUserOttsApi } from '../api/user';
 
+import { AppAlert } from '../store/useAlertStore';
 const OTTS = [
   { id: 8, name: '넷플릭스' }, { id: 337, name: '디즈니 플러스' }, { id: 1883, name: '티빙' },
   { id: 356, name: '웨이브' }, { id: 97, name: '왓챠' }, { id: 350, name: '애플 TV' },
@@ -30,7 +31,7 @@ export default function EditOttScreen() {
         }
       } catch (error) {
         console.error('OTT 정보 로드 실패:', error);
-        Alert.alert('오류', '구독 정보를 불러오는데 실패했습니다.');
+        AppAlert.alert('오류', '구독 정보를 불러오는데 실패했습니다.');
       } finally {
         setIsLoading(false);
       }
@@ -49,7 +50,7 @@ export default function EditOttScreen() {
 
   const handleUpdate = async () => {
     if (selectedOtts.length === 0) {
-      Alert.alert('알림', '최소 1개 이상의 OTT를 선택해주세요.');
+      AppAlert.alert('알림', '최소 1개 이상의 OTT를 선택해주세요.');
       return;
     }
 
@@ -57,11 +58,11 @@ export default function EditOttScreen() {
     try {
       await updateUserOttsApi(selectedOtts);
       DeviceEventEmitter.emit('pinlm:home-refresh');
-      Alert.alert('성공', '구독 정보가 수정되었습니다.');
+      AppAlert.alert('성공', '구독 정보가 수정되었습니다.');
       router.back();
     } catch (error) {
       console.error(error);
-      Alert.alert('오류', '정보 수정에 실패했습니다.');
+      AppAlert.alert('오류', '정보 수정에 실패했습니다.');
     } finally {
       setIsSubmitting(false);
     }
@@ -69,14 +70,14 @@ export default function EditOttScreen() {
 
   if (isLoading) {
     return (
-      <SafeAreaView style={[styles.container, styles.centerAll]}>
+      <SafeAreaView style={[styles.container, styles.centerAll]} edges={['top']}>
         <ActivityIndicator size="large" color="#FF5A36" />
       </SafeAreaView>
     );
   }
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Feather name="chevron-left" size={24} color="#fff" />

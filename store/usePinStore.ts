@@ -4,6 +4,7 @@ export interface PinnedMovie {
   id: number;
   title: string;
   image: string;
+  pinnedAt?: string | null;
 }
 
 interface PinState {
@@ -23,7 +24,12 @@ export const usePinStore = create<PinState>((set) => ({
   // Pin 영화 하나를 중복 없이 전역 상태에 추가한다.
   pinMovie: (movie) => set((state) => {
     if (state.pinnedMovies.some(m => m.id === movie.id)) return state;
-    return { pinnedMovies: [...state.pinnedMovies, movie] };
+    return {
+      pinnedMovies: [
+        ...state.pinnedMovies,
+        { ...movie, pinnedAt: movie.pinnedAt ?? new Date().toISOString() },
+      ],
+    };
   }),
   // 2026.05.13 박현식
   // Pin 전역 상태에서 영화 하나를 제거한다.
@@ -35,7 +41,12 @@ export const usePinStore = create<PinState>((set) => ({
     if (isPinned) {
       return { pinnedMovies: state.pinnedMovies.filter(m => m.id !== movie.id) };
     } else {
-      return { pinnedMovies: [...state.pinnedMovies, movie] };
+      return {
+        pinnedMovies: [
+          ...state.pinnedMovies,
+          { ...movie, pinnedAt: movie.pinnedAt ?? new Date().toISOString() },
+        ],
+      };
     }
   }),
   // 2026.05.13 박현식

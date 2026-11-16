@@ -16,8 +16,7 @@ import {
   StyleSheet,
   Text,
   View,
-  Alert,
-} from "react-native";
+} from 'react-native';
 import { WebView } from "react-native-webview";
 import client from "../../api/client";
 import { usePinStore } from "../../store/usePinStore";
@@ -32,6 +31,7 @@ import {
   pinMovieApi,
 } from "../../api/library";
 
+import { AppAlert } from '../../store/useAlertStore';
 const { width: WINDOW_WIDTH } = Dimensions.get("window");
 const VIDEO_HEIGHT = WINDOW_WIDTH * (9 / 16);
 const SWIPE_CUE_THRESHOLD = WINDOW_WIDTH * 0.25;
@@ -51,27 +51,33 @@ interface Movie {
 interface ShortsItemProps {
   movie: Movie;
   isActive: boolean;
+  isNext: boolean;
   isScreenFocused: boolean;
   layoutHeight: number;
   isGlobalMuted: boolean;
   setIsGlobalMuted: (muted: boolean) => void;
   onPass: () => void;
+  onVideoError: () => void;
   setScrollEnabled: (enabled: boolean) => void;
 }
 
 const ShortsItem = ({
   movie,
   isActive,
+  isNext,
   isScreenFocused,
   layoutHeight,
   isGlobalMuted,
   setIsGlobalMuted,
   onPass,
+  onVideoError,
   setScrollEnabled,
 }: ShortsItemProps) => {
   const blurAnim = useRef(new Animated.Value(0)).current;
   const webviewRef = useRef<WebView>(null);
+  const hasPrebufferedRef = useRef(false);
   const [isReady, setIsReady] = useState(false);
+  const [hasVideoError, setHasVideoError] = useState(false);
   const [playbackRate, setPlaybackRate] = useState<number>(1);
 
   const pinnedMovies = usePinStore((state) => state.pinnedMovies);
@@ -124,7 +130,7 @@ const ShortsItem = ({
       } catch (error) {
         console.error("Unpin API Error:", error);
         pinMovie(moviePayload);
-        Alert.alert("삭제 실패", "핀 보관함에서 삭제하지 못했습니다.");
+        AppAlert.alert("삭제 실패", "핀 보관함에서 삭제하지 못했습니다.");
       }
       return;
     }
@@ -138,7 +144,7 @@ const ShortsItem = ({
       if (!isPinned) {
         unpinMovie(movie.id);
       }
-      Alert.alert("저장 실패", "핀 보관함에 저장하지 못했습니다.");
+      AppAlert.alert("저장 실패", "핀 보관함에 저장하지 못했습니다.");
     }
   };
 
@@ -159,7 +165,7 @@ const ShortsItem = ({
   // 현재 상태(isPinned)를 바탕으로 작동하는 함수
   const confirmAndPass = () => {
     if (isPinned) {
-      Alert.alert(
+      AppAlert.alert(
         "Pin된 영화",
         "보관함에 Pin한 영화입니다.\n정말로 넘기시겠습니까?",
         [
@@ -294,17 +300,17 @@ const ShortsItem = ({
   });
 
   useEffect(() => {
-    if (!isReady || !webviewRef.current) return;
+    if (!isReady || !webviewRef.current || hasVideoError) return;
 
     if (isActive && isScreenFocused) {
+      hasPrebufferedRef.current = true;
       const muteCommand = isGlobalMuted ? "player.mute();" : "player.unMute();";
       webviewRef.current.injectJavaScript(`
+        window.__pinlmActive = true;
         if(player && typeof player.playVideo === 'function'){
           ${muteCommand}
-          player.setPlaybackRate(${playbackRate}); 
-          setTimeout(function() {
-            player.playVideo();
-          }, 50);
+          player.setPlaybackRate(${playbackRate});
+          player.playVideo();
         }
         true;
       `);
@@ -313,8 +319,25 @@ const ShortsItem = ({
         duration: 800,
         useNativeDriver: true,
       }).start();
+    } else if (isNext && isScreenFocused && !hasPrebufferedRef.current) {
+      hasPrebufferedRef.current = true;
+      webviewRef.current.injectJavaScript(`
+        window.__pinlmActive = false;
+        if(player && typeof player.playVideo === 'function'){
+          player.mute();
+          player.playVideo();
+          setTimeout(function() {
+            if(!window.__pinlmActive && player && typeof player.pauseVideo === 'function'){
+              player.pauseVideo();
+              if(typeof player.seekTo === 'function') player.seekTo(0, true);
+            }
+          }, 250);
+        }
+        true;
+      `);
     } else {
       webviewRef.current.injectJavaScript(`
+        window.__pinlmActive = false;
         if(player && typeof player.pauseVideo === 'function'){
           player.pauseVideo();
         }
@@ -327,15 +350,30 @@ const ShortsItem = ({
       }).start();
       setPlaybackRate(1);
     }
-  }, [isActive, isReady, isGlobalMuted, blurAnim, isScreenFocused]);
+  }, [isActive, isNext, isReady, isGlobalMuted, blurAnim, isScreenFocused, hasVideoError]);
 
   const htmlContent = `
     <!DOCTYPE html><html><head><meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <style>body, html { width: 100%; height: 100%; margin: 0; padding: 0; background-color: transparent; overflow: hidden; } #player { width: 100vw; height: 100vh; pointer-events: none; }</style>
     </head><body><div id="player"></div><script src="https://www.youtube.com/iframe_api"></script><script>
     var player; function onYouTubeIframeAPIReady() { player = new YT.Player('player', { videoId: '${movie.youtubeId}', host: 'https://www.youtube-nocookie.com',
-    playerVars: { 'playsinline': 1, 'autoplay': 0, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': '${movie.youtubeId}' },
-    events: { 'onReady': function(event) { window.ReactNativeWebView.postMessage(JSON.stringify({type:'onReady'})); } } }); }
+    playerVars: { 'playsinline': 1, 'autoplay': 0, 'mute': 1, 'controls': 0, 'loop': 1, 'playlist': '${movie.youtubeId}', 'cc_load_policy': 0 },
+    events: {
+      'onReady': function(event) {
+        if (event && event.target && typeof event.target.unloadModule === 'function') {
+          event.target.unloadModule('captions');
+          event.target.unloadModule('cc');
+        }
+        window.ReactNativeWebView.postMessage(JSON.stringify({type:'onReady'}));
+      },
+      'onStateChange': function(event) {
+        if (event && event.data === 1 && event.target && typeof event.target.unloadModule === 'function') {
+          event.target.unloadModule('captions');
+          event.target.unloadModule('cc');
+        }
+      },
+      'onError': function(event) { window.ReactNativeWebView.postMessage(JSON.stringify({type:'onError', code: event && event.data})); }
+    } }); }
     </script></body></html>`;
 
   return (
@@ -369,17 +407,27 @@ const ShortsItem = ({
             style={styles.videoTopFade}
             pointerEvents="none"
           />
-          <WebView
-            ref={webviewRef}
-            source={{ html: htmlContent, baseUrl: "https://localhost" }}
-            style={{ width: WINDOW_WIDTH, height: VIDEO_HEIGHT, backgroundColor: "transparent" }}
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-            onMessage={(e) => {
-              if (JSON.parse(e.nativeEvent.data).type === "onReady") setIsReady(true);
-            }}
-            scrollEnabled={false}
-          />
+          {!hasVideoError && (
+            <WebView
+              ref={webviewRef}
+              source={{ html: htmlContent, baseUrl: "https://localhost" }}
+              style={{ width: WINDOW_WIDTH, height: VIDEO_HEIGHT, backgroundColor: "transparent" }}
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              onMessage={(e) => {
+                try {
+                  const payload = JSON.parse(e.nativeEvent.data);
+                  if (payload.type === "onReady") setIsReady(true);
+                  if (payload.type === "onError") {
+                    setHasVideoError(true);
+                    setIsReady(false);
+                    onVideoError();
+                  }
+                } catch {}
+              }}
+              scrollEnabled={false}
+            />
+          )}
           <LinearGradient
             colors={["#000000", "rgba(0, 0, 0, 0.75)", "transparent"]}
             locations={[0, 0.35, 1]}
@@ -559,9 +607,16 @@ export default function HomeFeedScreen() {
         ]);
         const filteredMovies = filterVisibleMovies(data.movies, mergedExcludedIds);
 
-        setMovies((prevMovies) =>
-          pageNumber === 1 ? filteredMovies : [...prevMovies, ...filteredMovies],
-        );
+        setMovies((prevMovies) => {
+          const base = pageNumber === 1 ? [] : prevMovies;
+          const seenIds = new Set(base.map((movie) => movie.id));
+          const uniqueIncoming = filteredMovies.filter((movie) => {
+            if (seenIds.has(movie.id)) return false;
+            seenIds.add(movie.id);
+            return true;
+          });
+          return [...base, ...uniqueIncoming];
+        });
       } else if (pageNumber === 1) {
         setMovies([]);
       }
@@ -617,7 +672,6 @@ export default function HomeFeedScreen() {
         isActiveScreen = false;
         clearTimeout(timer);
         setIsScreenFocused(false);
-        setIsGlobalMuted(true);
       };
     }, [filterVisibleMovies, syncInteractionStores]),
   );
@@ -629,9 +683,20 @@ export default function HomeFeedScreen() {
   }, [refreshFeed]);
 
   useEffect(() => {
-    const subscription = DeviceEventEmitter.addListener('pinlm:home-refresh', refreshFeed);
-    return () => subscription.remove();
-  }, [refreshFeed]);
+    const refreshSub = DeviceEventEmitter.addListener('pinlm:home-refresh', refreshFeed);
+    const tabPressSub = DeviceEventEmitter.addListener('pinlm:home-tab-press', () => {
+      if (activeIndex > 0) {
+        flatListRef.current?.scrollToOffset({ offset: 0, animated: true });
+        setActiveIndex(0);
+      } else {
+        refreshFeed();
+      }
+    });
+    return () => {
+      refreshSub.remove();
+      tabPressSub.remove();
+    };
+  }, [activeIndex, refreshFeed]);
 
   const loadMoreMovies = useCallback(() => {
     if (!isFetchingMore && !isLoading) {
@@ -649,6 +714,15 @@ export default function HomeFeedScreen() {
 
   // 2026.05.13 박현식
   // 홈 피드 Pass 액션을 즉시 화면에서 제거하고 백엔드 passed API에 저장한다.
+  const handleVideoError = useCallback((id: number) => {
+    setMovies((prev) => prev.filter((m) => m.id !== id));
+    excludedMovieIdsRef.current.add(id);
+
+    if (movies.length - activeIndex <= 4) {
+      loadMoreMovies();
+    }
+  }, [activeIndex, loadMoreMovies, movies.length]);
+
   const handlePass = useCallback((id: number) => {
     const movieToPass = movies.find(m => m.id === id);
     if (!movieToPass) return;
@@ -672,7 +746,7 @@ export default function HomeFeedScreen() {
 
     passMovieApi(id).catch((error) => {
       console.error("Pass API Error:", error);
-      Alert.alert("저장 실패", "관심없음 목록에 저장하지 못했습니다.");
+      AppAlert.alert("저장 실패", "관심없음 목록에 저장하지 못했습니다.");
     });
   }, [activeIndex, loadMoreMovies, movies, passMovie, unpinMovie]);
 
@@ -697,11 +771,13 @@ export default function HomeFeedScreen() {
             <ShortsItem
               movie={item}
               isActive={index === activeIndex}
+              isNext={index === activeIndex + 1 || index === activeIndex + 2}
               isScreenFocused={isScreenFocused}
               layoutHeight={layoutHeight}
               isGlobalMuted={isGlobalMuted}
               setIsGlobalMuted={setIsGlobalMuted}
               onPass={() => handlePass(item.id)}
+              onVideoError={() => handleVideoError(item.id)}
               setScrollEnabled={setIsScrollEnabled}
             />
           )}
@@ -709,8 +785,10 @@ export default function HomeFeedScreen() {
           pagingEnabled
           showsVerticalScrollIndicator={false}
           onViewableItemsChanged={onViewableItemsChanged}
-          viewabilityConfig={{ itemVisiblePercentThreshold: 60 }}
-          windowSize={3}
+          viewabilityConfig={{ itemVisiblePercentThreshold: 35 }}
+          initialNumToRender={3}
+          maxToRenderPerBatch={3}
+          windowSize={5}
           getItemLayout={(data, index) => ({ length: layoutHeight, offset: layoutHeight * index, index })}
           onEndReached={loadMoreMovies}
           onEndReachedThreshold={0.5}

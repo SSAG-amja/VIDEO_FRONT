@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   Image,
   Keyboard,
   KeyboardAvoidingView,
@@ -16,11 +15,12 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
-import { fetchSearchData } from '../api/explore';
+import { fetchSearchData, SEARCH_PAGE_SIZE } from '../api/explore';
 import { fetchPlaylistsApi } from '../api/playlists';
 import { CommunityPostType, CreatePostPayload } from '../api/posts';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from './KeyboardAccessory';
 
+import { AppAlert } from '../store/useAlertStore';
 export type PostTargetMovie = {
   id: string | number;
   title: string;
@@ -132,26 +132,54 @@ export default function PostWriteModal({
       .catch((error) => console.error('Playlist Load For Post Error:', error));
   }, [lockTarget, visible, writeType]);
 
+  const movieSearchRequestIdRef = useRef(0);
+  const movieSearchAbortRef = useRef<AbortController | null>(null);
+
   useEffect(() => {
     if (!visible || lockTarget || writeType !== 'movie') return;
     const query = movieQuery.trim();
+    movieSearchAbortRef.current?.abort();
+
     if (!query || selectedMovie?.title === query) {
+      movieSearchRequestIdRef.current += 1;
       setMovieResults([]);
+      setIsMovieSearching(false);
       return;
     }
 
+    const requestId = movieSearchRequestIdRef.current + 1;
+    movieSearchRequestIdRef.current = requestId;
     setIsMovieSearching(true);
+
+    const controller = new AbortController();
+    movieSearchAbortRef.current = controller;
+
     const timer = setTimeout(async () => {
       try {
-        setMovieResults(await fetchSearchData(query));
+        const results = await fetchSearchData(
+          query,
+          'latest',
+          1,
+          SEARCH_PAGE_SIZE,
+          { titleOnly: true, signal: controller.signal }
+        );
+        if (controller.signal.aborted || requestId !== movieSearchRequestIdRef.current) return;
+        setMovieResults(results);
       } catch (error) {
-        console.error('Post Movie Search Error:', error);
+        if (!controller.signal.aborted) {
+          console.error('Post Movie Search Error:', error);
+        }
       } finally {
-        setIsMovieSearching(false);
+        if (!controller.signal.aborted && requestId === movieSearchRequestIdRef.current) {
+          setIsMovieSearching(false);
+        }
       }
-    }, 300);
+    }, 220);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [lockTarget, movieQuery, selectedMovie?.title, visible, writeType]);
 
   // 2026.05.18 박현식
@@ -173,7 +201,7 @@ export default function PostWriteModal({
   // 2026.08.14 임재준: 투표 선택지 추가 (최대 4개)
   const addPollOption = () => {
     if (pollOptions.length >= 4) {
-      Alert.alert('알림', '선택지는 최대 4개까지 추가할 수 있습니다.');
+      AppAlert.alert('알림', '선택지는 최대 4개까지 추가할 수 있습니다.');
       return;
     }
     setPollOptions([...pollOptions, '']);
@@ -182,7 +210,7 @@ export default function PostWriteModal({
   // 2026.08.14 임재준: 투표 선택지 삭제 (최소 2개 유지)
   const removePollOption = (index: number) => {
     if (pollOptions.length <= 2) {
-      Alert.alert('알림', '선택지는 최소 2개 이상이어야 합니다.');
+      AppAlert.alert('알림', '선택지는 최소 2개 이상이어야 합니다.');
       return;
     }
     setPollOptions(pollOptions.filter((_, i) => i !== index));
@@ -206,15 +234,15 @@ export default function PostWriteModal({
   // 2026.08.14 임재준 수정: 스포일러 및 투표 첨부 데이터 함께 검증 및 전송
   const submit = async () => {
     if (writeType === 'movie' && !selectedMovie) {
-      Alert.alert('확인', '공유할 영화를 선택해주세요.');
+      AppAlert.alert('확인', '공유할 영화를 선택해주세요.');
       return;
     }
     if (writeType === 'playlist' && !selectedPlaylist) {
-      Alert.alert('확인', '공유할 플레이리스트를 선택해주세요.');
+      AppAlert.alert('확인', '공유할 플레이리스트를 선택해주세요.');
       return;
     }
     if (!postTitle.trim() || !postContent.trim()) {
-      Alert.alert('확인', '제목과 내용을 입력해주세요.');
+      AppAlert.alert('확인', '제목과 내용을 입력해주세요.');
       return;
     }
 
@@ -223,7 +251,7 @@ export default function PostWriteModal({
     if (hasPoll && !lockTarget) {
       const validOptions = pollOptions.map((opt) => opt.trim()).filter(Boolean);
       if (validOptions.length < 2) {
-        Alert.alert('확인', '투표 선택지를 2개 이상 입력해주세요.');
+        AppAlert.alert('확인', '투표 선택지를 2개 이상 입력해주세요.');
         return;
       }
       pollPayload = {

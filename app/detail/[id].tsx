@@ -1,9 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { 
-  View, Text, StyleSheet, ImageBackground, ScrollView, 
-  Pressable, Image, Animated, Dimensions, BackHandler,
-  Modal, Alert, TextInput, Linking, KeyboardAvoidingView, Platform, Keyboard,
-  useWindowDimensions
+import {
+  View,
+  Text,
+  StyleSheet,
+  ImageBackground,
+  ScrollView,
+  Pressable,
+  Image,
+  Animated,
+  Dimensions,
+  BackHandler,
+  Modal,
+  TextInput,
+  Linking,
+  KeyboardAvoidingView,
+  Platform,
+  Keyboard,
+  useWindowDimensions,
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
@@ -22,6 +35,7 @@ import PostWriteModal from '../../components/PostWriteModal';
 import ReportModal from '../../components/ReportModal';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
+import { AppAlert } from '../../store/useAlertStore';
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
 const OTT_LINK_MAP: Record<number, {
@@ -231,7 +245,7 @@ export default function DetailScreen() {
         }
       }
 
-      Alert.alert('추가 완료', `'${playlistName}'에 영화가 추가되었습니다.`);
+      AppAlert.alert('추가 완료', `'${playlistName}'에 영화가 추가되었습니다.`);
       setPlaylistModalVisible(false);
     }
   };
@@ -246,7 +260,7 @@ export default function DetailScreen() {
       await handleAddToPlaylist(newPlaylist.id, newPlaylist.name);
     } catch (error) {
       console.error('Create Playlist API Error:', error);
-      Alert.alert('생성 실패', '플레이리스트를 생성하지 못했습니다.');
+      AppAlert.alert('생성 실패', '플레이리스트를 생성하지 못했습니다.');
     }
     
     setNewPlaylistName('');
@@ -276,7 +290,7 @@ export default function DetailScreen() {
       await Linking.openURL(fallbackUrl);
     } catch (webError) {
       console.error(`${mappedOtt.name} 웹 링크 실행 실패:`, webError);
-      Alert.alert('실행 오류', `${mappedOtt.name} 앱 또는 웹페이지를 열 수 없습니다.`);
+      AppAlert.alert('실행 오류', `${mappedOtt.name} 앱 또는 웹페이지를 열 수 없습니다.`);
     }
   };
 
@@ -284,7 +298,7 @@ export default function DetailScreen() {
     const mappedOtt = OTT_LINK_MAP[providerId];
 
     if (!mappedOtt) {
-      Alert.alert('알림', '해당 OTT의 바로가기를 아직 지원하지 않습니다.');
+      AppAlert.alert('알림', '해당 OTT의 바로가기를 아직 지원하지 않습니다.');
       return;
     }
 
@@ -297,7 +311,7 @@ export default function DetailScreen() {
     }
 
     if (!subscribedOttIds.includes(providerId)) {
-      Alert.alert(
+      AppAlert.alert(
         '구독 중인 OTT가 아닙니다',
         `${mappedOtt.name}으로 이동하시겠습니까?`,
         [
@@ -343,7 +357,7 @@ export default function DetailScreen() {
       } catch (error) {
         console.error('Unpin API Error:', error);
         pinMovie(moviePayload);
-        Alert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
+        AppAlert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
       }
 
       return;
@@ -356,7 +370,7 @@ export default function DetailScreen() {
     } catch (error) {
       console.error('Pin API Error:', error);
       unpinMovie(movieDetail.id);
-      Alert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
+      AppAlert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
     }
   };
 

@@ -1,8 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
-  DeviceEventEmitter, // 2026.08.22 임재준: 투표 동기화 이벤트 수신을 위해 추가
+  DeviceEventEmitter,
+  // 2026.08.22 임재준: 투표 동기화 이벤트 수신을 위해 추가
   FlatList,
   Image,
   Keyboard,
@@ -39,6 +39,7 @@ import KeyboardAccessory, {
   KEYBOARD_ACCESSORY_ID,
 } from '../../components/KeyboardAccessory';
 
+import { AppAlert } from '../../store/useAlertStore';
 // 2026.06.05 임재준
 // 포스터 이미지 로딩 실패 시 기본 이미지를 표시한다.
 function PosterImage({ uri, style }: { uri?: string; style: any }) {
@@ -106,7 +107,7 @@ export default function CommunityDetailScreen() {
   // 게시물 상세 정보를 불러와 본문, 좋아요, 댓글 목록을 한 화면에 표시한다.
   const loadPostDetail = useCallback(async () => {
     if (!id) {
-      Alert.alert('오류', '게시물 정보를 찾을 수 없습니다.');
+      AppAlert.alert('오류', '게시물 정보를 찾을 수 없습니다.');
       router.back();
       return;
     }
@@ -117,7 +118,7 @@ export default function CommunityDetailScreen() {
       setPost(detail);
     } catch (error) {
       console.error('Community Detail Load Error:', error);
-      Alert.alert('오류', '게시물을 불러오지 못했습니다.');
+      AppAlert.alert('오류', '게시물을 불러오지 못했습니다.');
       router.back();
     } finally {
       setIsLoading(false);
@@ -216,7 +217,7 @@ export default function CommunityDetailScreen() {
     } catch (error) {
       console.error('Post Like API Error:', error);
       setPost(previous);
-      Alert.alert('오류', '좋아요 상태를 변경하지 못했습니다.');
+      AppAlert.alert('오류', '좋아요 상태를 변경하지 못했습니다.');
     } finally {
       setIsLikeSubmitting(false);
     }
@@ -271,7 +272,7 @@ export default function CommunityDetailScreen() {
     } catch (error) {
       console.error('Reply Like API Error:', error);
       setPost((current) => (current ? { ...current, commentList: previousComments } : current));
-      Alert.alert('오류', '댓글 좋아요 상태를 변경하지 못했습니다.');
+      AppAlert.alert('오류', '댓글 좋아요 상태를 변경하지 못했습니다.');
     }
   };
 
@@ -284,7 +285,7 @@ export default function CommunityDetailScreen() {
     const content = commentText.trim();
 
     if (!content) {
-      Alert.alert('확인', '댓글 내용을 입력해주세요.');
+      AppAlert.alert('확인', '댓글 내용을 입력해주세요.');
       return;
     }
 
@@ -326,7 +327,7 @@ export default function CommunityDetailScreen() {
       Keyboard.dismiss();
     } catch (error) {
       console.error('Reply Submit API Error:', error);
-      Alert.alert(
+      AppAlert.alert(
         editingReply ? '수정 실패' : '등록 실패',
         '댓글을 저장하지 못했습니다.'
       );
@@ -346,7 +347,7 @@ export default function CommunityDetailScreen() {
   // 2026.08.14 임재준
   // 댓글 수정 전 확인 알림창을 띄우고 승인 시 수정 모드로 전환한다.
   const confirmEditReply = (reply: CommunityReply) => {
-    Alert.alert('댓글 수정', '댓글을 수정하시겠습니까?', [
+    AppAlert.alert('댓글 수정', '댓글을 수정하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '수정',
@@ -382,7 +383,7 @@ export default function CommunityDetailScreen() {
   const confirmDeleteReply = (reply: CommunityReply) => {
     if (!post) return;
 
-    Alert.alert('댓글 삭제', '댓글을 삭제하시겠습니까?', [
+    AppAlert.alert('댓글 삭제', '댓글을 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -425,7 +426,7 @@ export default function CommunityDetailScreen() {
             }
           } catch (error) {
             console.error('Delete Reply API Error:', error);
-            Alert.alert('삭제 실패', '댓글을 삭제하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '댓글을 삭제하지 못했습니다.');
           }
         },
       },
@@ -641,8 +642,27 @@ export default function CommunityDetailScreen() {
 
   if (isLoading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#FF6B4A" />
+      <View style={styles.container}>
+        <View
+          style={[
+            styles.header,
+            {
+              paddingTop: insets.top,
+              height: 58 + insets.top,
+            },
+          ]}
+        >
+          <Pressable onPress={() => router.back()} style={styles.backButton}>
+            <Ionicons name="chevron-back" size={26} color="#fff" />
+          </Pressable>
+
+          <Text style={styles.headerTitle}>게시물</Text>
+
+          <View style={styles.headerRight} />
+        </View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#FF6B4A" />
+        </View>
       </View>
     );
   }

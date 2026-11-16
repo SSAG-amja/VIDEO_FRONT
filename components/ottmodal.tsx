@@ -2,9 +2,10 @@
 //260401 임재준
 //상세정보에 삽입 하여 사용하지 않으나 추후 재사용을 위해 남겨둠
 import React from 'react';
-import { Modal, View, Text, StyleSheet, Pressable, Linking, Alert } from 'react-native';
+import { Modal, View, Text, StyleSheet, Pressable, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 
+import { AppAlert } from '../store/useAlertStore';
 const DUMMY_OTTS = [
   { id: 'netflix', name: '넷플릭스', color: '#E50914', scheme: 'nflx://' },
   { id: 'watcha', name: '왓챠', color: '#FF0558', scheme: 'watcha://' },
@@ -25,10 +26,10 @@ export default function OttModal({ visible, onClose }: OttModalProps) {
       if (supported) {
         await Linking.openURL(ott.scheme);
       } else {
-        Alert.alert(`${ott.name} 앱 실행`, `기기에 ${ott.name} 앱이 설치되어 있지 않습니다.`);
+        AppAlert.alert(`${ott.name} 앱 실행`, `기기에 ${ott.name} 앱이 설치되어 있지 않습니다.`);
       }
     } catch (error) {
-      Alert.alert('실행 오류', '앱을 열 수 없습니다.');
+      AppAlert.alert('실행 오류', '앱을 열 수 없습니다.');
     }
   };
 

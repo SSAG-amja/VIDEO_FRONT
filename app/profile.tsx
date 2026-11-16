@@ -1,5 +1,6 @@
-import React, { useCallback, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, SafeAreaView, Switch, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Pressable, DeviceEventEmitter } from 'react-native';
+import React, { useCallback, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Switch, ActivityIndicator, Modal, TextInput, KeyboardAvoidingView, Platform, Pressable, DeviceEventEmitter } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { router, useFocusEffect } from 'expo-router';
 import { signoutApi, verifyPasswordApi } from '../api/auth';
 import { getUserProfileApi } from '../api/user';
@@ -7,6 +8,7 @@ import * as SecureStore from 'expo-secure-store';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 import { useRecommendationStore } from '../store/useRecommendationStore';
 
+import { AppAlert } from '../store/useAlertStore';
 // --- Types ---
 interface MenuButtonProps {
   title: string;
@@ -28,6 +30,7 @@ export default function Profile() {
   const hydrateRecommendationMode = useRecommendationStore((state) => state.hydrate);
   const setSubscribedOnly = useRecommendationStore((state) => state.setSubscribedOnly);
   const [isLoadingProfile, setIsLoadingProfile] = useState(true);
+  const hasLoadedProfileRef = useRef(false);
   const [profile, setProfile] = useState({
     nickname: '',
     email: '',
@@ -43,10 +46,14 @@ export default function Profile() {
       let isActive = true;
 
       const fetchProfile = async () => {
+        const shouldShowLoading = !hasLoadedProfileRef.current;
         try {
-          setIsLoadingProfile(true);
+          if (shouldShowLoading) {
+            setIsLoadingProfile(true);
+          }
           const data = await getUserProfileApi();
           if (isActive) {
+            hasLoadedProfileRef.current = true;
             setProfile({
               nickname: data.nickname || '',
               email: data.email || '',
@@ -54,8 +61,8 @@ export default function Profile() {
           }
         } catch (error) {
           console.error('Profile Load Error:', error);
-          if (isActive) {
-            Alert.alert('에러', '사용자 정보를 불러오지 못했습니다.');
+          if (isActive && shouldShowLoading) {
+            AppAlert.alert('에러', '사용자 정보를 불러오지 못했습니다.');
           }
         } finally {
           if (isActive) {
@@ -80,7 +87,7 @@ export default function Profile() {
 
   // 1. 로그아웃 로직
   const handleLogout = () => {
-    Alert.alert(
+    AppAlert.alert(
       "로그아웃",
       "정말 로그아웃 하시겠습니까?",
       [
@@ -95,7 +102,7 @@ export default function Profile() {
               router.replace('/(auth)/signin'); 
             } catch (error) {
               console.error('Logout Error:', error);
-              Alert.alert("에러", "로그아웃 처리에 실패했습니다. 네트워크를 확인해주세요.");
+              AppAlert.alert("에러", "로그아웃 처리에 실패했습니다. 네트워크를 확인해주세요.");
             }
           }
         }
@@ -105,7 +112,7 @@ export default function Profile() {
 
   // 2. 회원탈퇴 로직 (틀)
   const handleDeleteAccount = () => {
-    Alert.alert(
+    AppAlert.alert(
       "회원 탈퇴",
       "탈퇴 시 모든 정보가 삭제되며 복구할 수 없습니다. 정말 탈퇴하시겠습니까?",
       [
@@ -140,7 +147,7 @@ export default function Profile() {
 // 비밀번호 수정 화면 진입 시 백엔드에서 발급한 비밀번호 변경용 임시 토큰을 함께 전달한다.
 const handleVerifyPassword = async () => {
   if (!currentPassword.trim()) {
-    Alert.alert('알림', '현재 비밀번호를 입력해주세요.');
+    AppAlert.alert('알림', '현재 비밀번호를 입력해주세요.');
     return;
   }
 
@@ -160,7 +167,7 @@ const handleVerifyPassword = async () => {
 
     if (target === 'password') {
       if (!passwordChangeToken) {
-        Alert.alert('오류', '비밀번호 변경 인증 토큰을 받지 못했습니다.');
+        AppAlert.alert('오류', '비밀번호 변경 인증 토큰을 받지 못했습니다.');
         return;
       }
 
@@ -173,7 +180,7 @@ const handleVerifyPassword = async () => {
     }
   } catch (error) {
     console.error('Verify Password Error:', error);
-    Alert.alert('인증 실패', '현재 비밀번호가 일치하지 않습니다.');
+    AppAlert.alert('인증 실패', '현재 비밀번호가 일치하지 않습니다.');
   } finally {
     setIsVerifyingPassword(false);
   }
@@ -205,7 +212,7 @@ const handleVerifyPassword = async () => {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* 헤더 (프로필 요약) */}
       <View style={styles.headerContainer}>
         {isLoadingProfile ? (

@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -21,6 +20,7 @@ import {
   confirmPasswordResetApi,
 } from '../../api/auth';
 
+import { AppAlert } from '../../store/useAlertStore';
 type ResetStep = 'email' | 'code' | 'password';
 
 export default function PasswordResetScreen() {
@@ -74,12 +74,12 @@ export default function PasswordResetScreen() {
 
   const handleSendCode = async () => {
     if (!email) {
-      Alert.alert('알림', '이메일을 입력해주세요.');
+      AppAlert.alert('알림', '이메일을 입력해주세요.');
       return;
     }
 
     if (isEmailError) {
-      Alert.alert('오류', '이메일 형식을 다시 확인해주세요.');
+      AppAlert.alert('오류', '이메일 형식을 다시 확인해주세요.');
       return;
     }
 
@@ -88,13 +88,13 @@ export default function PasswordResetScreen() {
 
       await sendPasswordResetCodeApi(email);
 
-      Alert.alert('성공', '인증 코드가 이메일로 발송되었습니다.');
+      AppAlert.alert('성공', '인증 코드가 이메일로 발송되었습니다.');
       setStep('code');
     } catch (error: any) {
       console.error('status:', error?.response?.status);
       console.error('data:', JSON.stringify(error?.response?.data, null, 2));
 
-      Alert.alert(
+      AppAlert.alert(
         '오류',
         getErrorMessage(error, '인증 코드 발송에 실패했습니다.')
       );
@@ -105,7 +105,7 @@ export default function PasswordResetScreen() {
 
   const handleVerifyCode = async () => {
     if (!code) {
-      Alert.alert('알림', '인증 코드를 입력해주세요.');
+      AppAlert.alert('알림', '인증 코드를 입력해주세요.');
       return;
     }
 
@@ -115,13 +115,13 @@ export default function PasswordResetScreen() {
       const result = await verifyPasswordResetCodeApi(email, code);
 
       setResetToken(result.reset_token);
-      Alert.alert('성공', '이메일 인증이 완료되었습니다.');
+      AppAlert.alert('성공', '이메일 인증이 완료되었습니다.');
       setStep('password');
     } catch (error: any) {
       console.error('status:', error?.response?.status);
       console.error('data:', JSON.stringify(error?.response?.data, null, 2));
 
-      Alert.alert(
+      AppAlert.alert(
         '오류',
         getErrorMessage(error, '인증 코드 확인에 실패했습니다.')
       );
@@ -132,17 +132,17 @@ export default function PasswordResetScreen() {
 
   const handleResetPassword = async () => {
     if (!newPassword || !newPasswordCheck) {
-      Alert.alert('알림', '새 비밀번호를 모두 입력해주세요.');
+      AppAlert.alert('알림', '새 비밀번호를 모두 입력해주세요.');
       return;
     }
 
     if (isPasswordError || isPasswordCheckError) {
-      Alert.alert('오류', '비밀번호 입력값을 다시 확인해주세요.');
+      AppAlert.alert('오류', '비밀번호 입력값을 다시 확인해주세요.');
       return;
     }
 
     if (!resetToken) {
-      Alert.alert('오류', '비밀번호 재설정 인증 정보가 없습니다.');
+      AppAlert.alert('오류', '비밀번호 재설정 인증 정보가 없습니다.');
       setStep('email');
       return;
     }
@@ -157,13 +157,13 @@ export default function PasswordResetScreen() {
         newPasswordCheck
       );
 
-      Alert.alert('성공', '비밀번호가 재설정되었습니다. 다시 로그인해주세요.');
+      AppAlert.alert('성공', '비밀번호가 재설정되었습니다. 다시 로그인해주세요.');
       router.replace('/signin');
     } catch (error: any) {
       console.error('status:', error?.response?.status);
       console.error('data:', JSON.stringify(error?.response?.data, null, 2));
 
-      Alert.alert(
+      AppAlert.alert(
         '오류',
         getErrorMessage(error, '비밀번호 재설정에 실패했습니다.')
       );

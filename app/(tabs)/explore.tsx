@@ -18,6 +18,7 @@ import {
   fetchSearchData,
   fetchRecommendData,
   SEARCH_PAGE_SIZE,
+  SearchType,
 } from '../../api/explore';
 import KeyboardAccessory, {
   KEYBOARD_ACCESSORY_ID,
@@ -38,6 +39,17 @@ const MOOD_TAGS = [
   '#여운이 남는 음악·예술',
 ];
 
+const SEARCH_FILTER_OPTIONS: {
+  key: SearchType;
+  label: string;
+  placeholder: string;
+}[] = [
+  { key: 'all', label: '통합검색', placeholder: '영화 제목, 배우, 감독 검색...' },
+  { key: 'title', label: '영화', placeholder: '영화 제목 검색...' },
+  { key: 'director', label: '감독', placeholder: '감독 이름 검색...' },
+  { key: 'actor', label: '배우', placeholder: '배우 이름 검색...' },
+];
+
 const splitIntoColumns = <T,>(items: T[], columnCount: number): T[][] => {
   const columns: T[][] = Array.from({ length: columnCount }, () => []);
   items.forEach((item, index) => {
@@ -54,6 +66,8 @@ export default function ExploreScreen() {
   // 🔍 검색 관련 상태
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  const [searchType, setSearchType] = useState<SearchType>('title');
+  const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [searchPage, setSearchPage] = useState(1);
@@ -134,7 +148,8 @@ export default function ExploreScreen() {
         debouncedSearchQuery,
         sortOrder,
         targetPage,
-        SEARCH_PAGE_SIZE
+        SEARCH_PAGE_SIZE,
+        { searchType }
       );
 
       if (requestId !== searchRequestIdRef.current) return;
@@ -186,7 +201,8 @@ export default function ExploreScreen() {
           debouncedSearchQuery,
           sortOrder,
           1,
-          SEARCH_PAGE_SIZE
+          SEARCH_PAGE_SIZE,
+          { searchType }
         );
 
         if (requestId !== searchRequestIdRef.current) return;
@@ -202,7 +218,7 @@ export default function ExploreScreen() {
     };
 
     loadDebouncedSearchResults();
-  }, [debouncedSearchQuery, sortOrder]);
+  }, [debouncedSearchQuery, sortOrder, searchType]);
 
   const defaultColumns = splitIntoColumns(defaultMovies, numColumns);
   const searchColumns = splitIntoColumns(searchResults, numColumns);
@@ -256,33 +272,98 @@ export default function ExploreScreen() {
     </Pressable>
   );
 
+  const activeFilterOption =
+    SEARCH_FILTER_OPTIONS.find((opt) => opt.key === searchType) ??
+    SEARCH_FILTER_OPTIONS[0];
+
   return (
     <View style={styles.container}>
       <Text style={styles.headerTitle}>탐색</Text>
 
-      <View style={styles.searchContainer}>
-        <Ionicons
-          name="search"
-          size={20}
-          color="#666"
-          style={styles.searchIcon}
-        />
-
-        <TextInput
-          style={styles.searchInput}
-          placeholder="영화 제목, 배우, 감독 검색..."
-          placeholderTextColor="#666"
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          returnKeyType="done"
-          onSubmitEditing={Keyboard.dismiss}
-          inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
-        />
-
-        {searchQuery.length > 0 && (
-          <Pressable onPress={() => setSearchQuery('')}>
-            <Ionicons name="close-circle" size={20} color="#666" />
+      <View style={styles.searchSectionWrapper}>
+        <View style={styles.searchContainer}>
+          <Pressable
+            style={styles.filterTrigger}
+            onPress={() => setIsFilterDrawerOpen((prev) => !prev)}
+          >
+            <Text style={styles.filterTriggerText}>{activeFilterOption.label}</Text>
+            <Ionicons
+              name={isFilterDrawerOpen ? 'chevron-up' : 'chevron-down'}
+              size={14}
+              color="#FF5A36"
+            />
           </Pressable>
+
+          <View style={styles.searchDivider} />
+
+          <Ionicons
+            name="search"
+            size={18}
+            color="#666"
+            style={styles.searchIcon}
+          />
+
+          <TextInput
+            style={styles.searchInput}
+            placeholder={activeFilterOption.placeholder}
+            placeholderTextColor="#666"
+            value={searchQuery}
+            onChangeText={(text) => {
+              setSearchQuery(text);
+              if (isFilterDrawerOpen) setIsFilterDrawerOpen(false);
+            }}
+            onFocus={() => setIsFilterDrawerOpen(false)}
+            returnKeyType="done"
+            onSubmitEditing={() => {
+              setIsFilterDrawerOpen(false);
+              Keyboard.dismiss();
+            }}
+            inputAccessoryViewID={KEYBOARD_ACCESSORY_ID}
+          />
+
+          {searchQuery.length > 0 && (
+            <Pressable
+              onPress={() => {
+                setSearchQuery('');
+                setIsFilterDrawerOpen(false);
+              }}
+            >
+              <Ionicons name="close-circle" size={20} color="#666" />
+            </Pressable>
+          )}
+        </View>
+
+        {isFilterDrawerOpen && (
+          <View style={styles.filterDrawer}>
+            {SEARCH_FILTER_OPTIONS.map((option) => {
+              const isSelected = option.key === searchType;
+              return (
+                <Pressable
+                  key={option.key}
+                  style={[
+                    styles.filterDrawerItem,
+                    isSelected && styles.filterDrawerItemActive,
+                  ]}
+                  onPress={() => {
+                    setSearchType(option.key);
+                    setIsFilterDrawerOpen(false);
+                  }}
+                >
+                  <Text
+                    style={[
+                      styles.filterDrawerText,
+                      isSelected && styles.filterDrawerTextActive,
+                    ]}
+                  >
+                    {option.label}
+                  </Text>
+                  {isSelected && (
+                    <Ionicons name="checkmark" size={16} color="#FF5A36" />
+                  )}
+                </Pressable>
+              );
+            })}
+          </View>
         )}
       </View>
 
@@ -378,7 +459,14 @@ export default function ExploreScreen() {
                 )}
               </>
             ) : (
-              <Text style={styles.noResultText}>검색 결과가 없습니다.</Text>
+              <View style={{ alignItems: 'center', marginTop: 60 }}>
+                <Text style={[styles.noResultText, { marginTop: 0 }]}>검색 결과가 없습니다.</Text>
+                {searchType === 'title' && (
+                  <Text style={{ color: '#777', fontSize: 13, marginTop: 8 }}>
+                    감독·배우 검색은 왼쪽 필터에서 선택할 수 있습니다.
+                  </Text>
+                )}
+              </View>
             )}
           </ScrollView>
         </View>
@@ -455,27 +543,94 @@ const styles = StyleSheet.create({
     marginBottom: 20,
   },
 
+  searchSectionWrapper: {
+    position: 'relative',
+    zIndex: 20,
+    marginBottom: 20,
+  },
+
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#1a1a1a',
     borderRadius: 25,
     marginHorizontal: 20,
-    paddingHorizontal: 15,
+    paddingHorizontal: 14,
     height: 50,
-    marginBottom: 20,
     borderWidth: 1,
     borderColor: '#333',
   },
 
-  searchIcon: {
+  filterTrigger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingVertical: 6,
+    paddingRight: 8,
+  },
+
+  filterTriggerText: {
+    color: '#FF5A36',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
+
+  searchDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: '#333',
     marginRight: 10,
+  },
+
+  searchIcon: {
+    marginRight: 8,
   },
 
   searchInput: {
     flex: 1,
     color: '#fff',
-    fontSize: 16,
+    fontSize: 15,
+  },
+
+  filterDrawer: {
+    position: 'absolute',
+    top: 56,
+    left: 20,
+    width: 140,
+    backgroundColor: '#1a1a1a',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#333',
+    paddingVertical: 6,
+    zIndex: 30,
+    elevation: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+  },
+
+  filterDrawerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+  },
+
+  filterDrawerItemActive: {
+    backgroundColor: 'rgba(255, 90, 54, 0.1)',
+  },
+
+  filterDrawerText: {
+    color: '#ccc',
+    fontSize: 14,
+    fontWeight: '600',
+  },
+
+  filterDrawerTextActive: {
+    color: '#FF5A36',
+    fontWeight: 'bold',
   },
 
   // 정렬 버튼 스타일

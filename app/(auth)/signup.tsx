@@ -5,7 +5,6 @@ import {
   TextInput,
   Pressable,
   StyleSheet,
-  Alert,
   ScrollView,
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +21,7 @@ import { Picker } from '@react-native-picker/picker';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
+import { AppAlert } from '../../store/useAlertStore';
 // --- 커스텀 데이트 피커 모달 컴포넌트 (iOS용 디자인 통일) ---
 interface DatePickerModalProps {
   isVisible: boolean;
@@ -205,12 +205,12 @@ export default function SignupScreen() {
 
   const handleSendEmailCode = async () => {
     if (!email) {
-      Alert.alert('알림', '이메일을 입력해주세요.');
+      AppAlert.alert('알림', '이메일을 입력해주세요.');
       return;
     }
 
     if (isEmailError) {
-      Alert.alert('오류', '이메일 양식을 다시 확인해주세요.');
+      AppAlert.alert('오류', '이메일 양식을 다시 확인해주세요.');
       return;
     }
 
@@ -223,10 +223,10 @@ export default function SignupScreen() {
       setIsEmailVerified(false);
       setSignupToken('');
 
-      Alert.alert('성공', '인증 코드가 이메일로 발송되었습니다.');
+      AppAlert.alert('성공', '인증 코드가 이메일로 발송되었습니다.');
     } catch (error: any) {
       console.error(error);
-      Alert.alert('오류', getErrorMessage(error, '인증 코드 발송에 실패했습니다.'));
+      AppAlert.alert('오류', getErrorMessage(error, '인증 코드 발송에 실패했습니다.'));
     } finally {
       setIsSendingCode(false);
     }
@@ -234,7 +234,7 @@ export default function SignupScreen() {
 
   const handleVerifyEmailCode = async () => {
     if (!emailCode) {
-      Alert.alert('알림', '인증 코드를 입력해주세요.');
+      AppAlert.alert('알림', '인증 코드를 입력해주세요.');
       return;
     }
 
@@ -246,12 +246,12 @@ export default function SignupScreen() {
       setSignupToken(result.signup_token);
       setIsEmailVerified(true);
 
-      Alert.alert('성공', '이메일 인증이 완료되었습니다.');
+      AppAlert.alert('성공', '이메일 인증이 완료되었습니다.');
     } catch (error: any) {
       console.error(error);
       setSignupToken('');
       setIsEmailVerified(false);
-      Alert.alert('오류', getErrorMessage(error, '인증 코드 확인에 실패했습니다.'));
+      AppAlert.alert('오류', getErrorMessage(error, '인증 코드 확인에 실패했습니다.'));
     } finally {
       setIsVerifyingCode(false);
     }
@@ -259,17 +259,17 @@ export default function SignupScreen() {
 
   const handleSignup = async () => {
     if (!email || !password || !passwordCheck || !nickname || !birthDate || !gender) {
-      Alert.alert('알림', '모든 항목을 입력해주세요.');
+      AppAlert.alert('알림', '모든 항목을 입력해주세요.');
       return;
     }
 
     if (isEmailError || isPasswordError || isPasswordCheckError) {
-      Alert.alert('오류', '입력 양식을 다시 확인해주세요.');
+      AppAlert.alert('오류', '입력 양식을 다시 확인해주세요.');
       return;
     }
 
     if (!isEmailVerified || !signupToken) {
-      Alert.alert('알림', '이메일 인증을 완료해주세요.');
+      AppAlert.alert('알림', '이메일 인증을 완료해주세요.');
       return;
     }
 
@@ -286,11 +286,11 @@ export default function SignupScreen() {
         signupToken
       );
 
-      Alert.alert('성공', '가입되었습니다! 이제 로그인해주세요.');
+      AppAlert.alert('성공', '가입되었습니다! 이제 로그인해주세요.');
       router.replace('/(auth)/signin');
     } catch (error: any) {
       console.error(error);
-      Alert.alert('오류', getErrorMessage(error, '회원가입에 실패했습니다.'));
+      AppAlert.alert('오류', getErrorMessage(error, '회원가입에 실패했습니다.'));
     } finally {
       setIsSigningUp(false);
     }

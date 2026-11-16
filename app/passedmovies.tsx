@@ -1,11 +1,12 @@
 import React, { useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, Image, Pressable, Alert } from 'react-native';
+import { View, Text, StyleSheet, FlatList, Image, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context'; // 💡 변경된 임포트
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { usePassedStore } from '../store/usePassedStore';
 import { clearPassedMoviesApi, deletePassedMovieApi, fetchPassedMoviesApi } from '../api/library';
 
+import { AppAlert } from '../store/useAlertStore';
 export default function HiddenMoviesScreen() {
   const { passedMovies, unpassMovie, setPassedMovies, clearPassedMovies } = usePassedStore();
 
@@ -37,7 +38,7 @@ export default function HiddenMoviesScreen() {
   // 2026.05.13 박현식
   // 숨긴 영화 하나를 passed 목록에서 제거하고 백엔드 삭제 API를 호출한다.
   const handleUnpass = (id: number, title: string) => {
-    Alert.alert(
+    AppAlert.alert(
       "숨김 해제",
       `'${title}'의 숨김 처리를 해제하시겠습니까?\n해제된 영화는 다시 추천 목록에 나타날 수 있습니다.`,
       [
@@ -50,7 +51,7 @@ export default function HiddenMoviesScreen() {
               unpassMovie(id);
             } catch (error) {
               console.error('Unpass API Error:', error);
-              Alert.alert('해제 실패', '숨김 처리를 해제하지 못했습니다.');
+              AppAlert.alert('해제 실패', '숨김 처리를 해제하지 못했습니다.');
             }
           },
           style: "default"
@@ -64,7 +65,7 @@ export default function HiddenMoviesScreen() {
   const handleClearPassed = () => {
     if (passedMovies.length === 0) return;
 
-    Alert.alert('관심없음 전체 삭제', '숨긴 영화를 모두 삭제하시겠습니까?', [
+    AppAlert.alert('관심없음 전체 삭제', '숨긴 영화를 모두 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '전체 삭제',
@@ -75,7 +76,7 @@ export default function HiddenMoviesScreen() {
             clearPassedMovies();
           } catch (error) {
             console.error('Clear Passed API Error:', error);
-            Alert.alert('삭제 실패', '숨긴 영화를 전체 삭제하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '숨긴 영화를 전체 삭제하지 못했습니다.');
           }
         },
       },
@@ -102,7 +103,7 @@ export default function HiddenMoviesScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <Pressable onPress={() => router.back()} style={styles.backButton}>
           <Ionicons name="chevron-back" size={28} color="#fff" />

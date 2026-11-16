@@ -17,6 +17,7 @@ const toStoredMovie = (movie: any) => ({
   id: Number(movie.movie_id ?? movie.id),
   title: movie.movie_title ?? movie.title ?? '',
   image: posterUrl(movie.poster_path ?? movie.posterPath),
+  pinnedAt: movie.pinned_at ?? movie.pinnedAt ?? null,
   watchedAt: movie.watched_at ?? movie.watchedAt ?? null,
 });
 

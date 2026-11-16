@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Pressable, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { signinApi } from '../../api/auth';
 import * as SecureStore from 'expo-secure-store';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
+import { AppAlert } from '../../store/useAlertStore';
 export default function SigninScreen() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -18,7 +19,7 @@ export default function SigninScreen() {
         await SecureStore.setItemAsync('userToken', data.access_token);
       }
 
-      Alert.alert('성공', '로그인 되었습니다.');
+      AppAlert.alert('성공', '로그인 되었습니다.');
 
       // 온보딩 완료 여부에 따라 화면 이동 분기
       if (data.is_onboarding_completed) {
@@ -28,7 +29,7 @@ export default function SigninScreen() {
       }
     } catch (error: any) {
       console.error(error);
-      Alert.alert('오류', '이메일 또는 비밀번호를 확인하세요.');
+      AppAlert.alert('오류', '이메일 또는 비밀번호를 확인하세요.');
     }
   };
 

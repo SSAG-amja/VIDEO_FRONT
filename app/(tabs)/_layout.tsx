@@ -7,6 +7,10 @@ export default function TabLayout() {
   
   // 현재 경로가 홈 화면('/', '/index')인지 확인
   const isHome = pathname === '/' || pathname === '/index';
+  const showProfileIcon =
+    pathname === '/explore' ||
+    pathname === '/library' ||
+    pathname === '/community';
 
   return (
     <View style={styles.container}>
@@ -36,7 +40,7 @@ export default function TabLayout() {
           listeners={{
             tabPress: () => {
               if (isHome) {
-                DeviceEventEmitter.emit('pinlm:home-refresh');
+                DeviceEventEmitter.emit('pinlm:home-tab-press');
               }
             },
           }}
@@ -82,8 +86,8 @@ export default function TabLayout() {
         />
       </Tabs>
 
-      {/* 홈 화면이 아닐 때만 렌더링되는 우측 상단 프로필 아이콘 */}
-      {!isHome && (
+      {/* 탐색/보관함/커뮤니티 탭일 때만 렌더링되는 우측 상단 프로필 아이콘 */}
+      {showProfileIcon && (
         <Pressable 
           style={({ pressed }) => [
             styles.profileIcon,

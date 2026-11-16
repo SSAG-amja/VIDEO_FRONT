@@ -1,13 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, Alert, TextInput, Modal, Image } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, ImageBackground, FlatList, ActivityIndicator, TextInput, Modal, Image } from 'react-native';
 import { router } from 'expo-router';
 import { Feather, Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // 💡 api 경로를 프로젝트 구조에 맞게 수정하세요 (예: ../api/explore 또는 ../../api/explore)
 import { fetchMoviesByGenres, fetchSearchData } from '../api/explore';
 import { getUserProfileApi, submitOnboardingApi } from '../api/user';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../components/KeyboardAccessory';
 
+import { AppAlert } from '../store/useAlertStore';
 const ONBOARDING_SEARCH_PAGE_SIZE = 12;
 
 const OTTS = [
@@ -27,6 +29,7 @@ const GENRES = [
 ];
 
 export default function OnboardingScreen() {
+  const insets = useSafeAreaInsets();
   const [step, setStep] = useState<number>(1);
   const [selectedOtts, setSelectedOtts] = useState<number[]>([]);
   const [selectedGenres, setSelectedGenres] = useState<number[]>([]);
@@ -262,7 +265,7 @@ export default function OnboardingScreen() {
       setStep(2);
     } else if (step === 2) {
       if (selectedGenres.length === 0) {
-        Alert.alert('알림', '최소 1개 이상의 장르를 선택해주세요.');
+        AppAlert.alert('알림', '최소 1개 이상의 장르를 선택해주세요.');
         return;
       }
       const currentGenresKey = getGenresKey(selectedGenres);
@@ -293,7 +296,7 @@ export default function OnboardingScreen() {
 
   const submitOnboardingData = async () => {
     if (selectedOtts.length === 0 || selectedGenres.length === 0 || selectedMovies.length === 0) {
-      Alert.alert('알림', '모든 항목을 최소 1개 이상 선택해주세요.');
+      AppAlert.alert('알림', '모든 항목을 최소 1개 이상 선택해주세요.');
       return;
     }
 
@@ -308,7 +311,7 @@ export default function OnboardingScreen() {
       router.replace('/(tabs)'); 
     } catch (error) {
       console.error('온보딩 저장 실패:', error);
-      Alert.alert('오류', '온보딩 정보를 저장하지 못했습니다. 다시 시도해주세요.');
+      AppAlert.alert('오류', '온보딩 정보를 저장하지 못했습니다. 다시 시도해주세요.');
     } finally {
       setIsSubmitting(false);
     }
@@ -455,7 +458,7 @@ export default function OnboardingScreen() {
         )}
       </View>
 
-      <View style={styles.footer}>
+      <View style={[styles.footer, { paddingBottom: Math.max(insets.bottom + 16, 40) }]}>
         <Pressable 
           style={[styles.nextButton, (isSubmitting || isFetchingMovies) && { opacity: 0.7 }]} 
           onPress={handleNext} 
@@ -497,7 +500,7 @@ export default function OnboardingScreen() {
               data={searchResults}
               keyExtractor={(item, index) => item.id ? item.id.toString() : index.toString()}
               renderItem={renderSearchItem}
-              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: hasSelectedInModal ? 120 : 40 }}
+              contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: (hasSelectedInModal ? 120 : 40) + insets.bottom }}
               showsVerticalScrollIndicator={false}
               onEndReached={handleLoadMoreSearch}
               onEndReachedThreshold={0.5}
@@ -510,7 +513,7 @@ export default function OnboardingScreen() {
           )}
 
           {hasSelectedInModal && (
-            <View style={styles.modalFooter}>
+            <View style={[styles.modalFooter, { paddingBottom: Math.max(insets.bottom + 16, 40) }]}>
               <Pressable style={styles.nextButton} onPress={closeSearchModal}>
                 <Text style={styles.nextButtonText}>영화 선택하기</Text>
               </Pressable>

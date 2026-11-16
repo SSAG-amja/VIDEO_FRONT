@@ -1,14 +1,39 @@
+import { useEffect } from 'react';
+import { View } from 'react-native';
+import { DarkTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack } from 'expo-router';
+import * as SystemUI from 'expo-system-ui';
+import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AppAlertModal from '../components/AppAlertModal';
 
-export default function RootLayout() {
+const APP_DARK_THEME = {
+  ...DarkTheme,
+  colors: {
+    ...DarkTheme.colors,
+    background: '#0a0a0a',
+    card: '#0a0a0a',
+  },
+};
+
+function RootLayoutNav() {
+  const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    void SystemUI.setBackgroundColorAsync('#0a0a0a');
+  }, []);
+
   return (
-    <Stack 
-      screenOptions={{ 
-        headerShown: false,
-        // 🔥 핵심: 화면 전환 도중 바닥에 깔린 뷰가 노출될 때 번쩍이는 흰색/회색을 검은색으로 고정
-        contentStyle: { backgroundColor: '#0a0a0a' } 
-      }}
-    >
+    <ThemeProvider value={APP_DARK_THEME}>
+      <View style={{ flex: 1, backgroundColor: '#0a0a0a', paddingBottom: insets.bottom }}>
+        <Stack 
+          screenOptions={{ 
+            headerShown: false,
+            animation: 'fade',
+            animationDuration: 100,
+            // 🔥 핵심: 화면 전환 도중 바닥에 깔린 뷰가 노출될 때 번쩍이는 흰색/회색을 검은색으로 고정
+            contentStyle: { backgroundColor: '#0a0a0a' } 
+          }}
+        >
       <Stack.Screen name="index" />
       
       {/* 1. 인증 관련 화면 (회원가입/로그인) */}
@@ -37,6 +62,17 @@ export default function RootLayout() {
           contentStyle: { backgroundColor: 'transparent' }
         }} 
       />
-    </Stack>
+        </Stack>
+        <AppAlertModal />
+      </View>
+    </ThemeProvider>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <SafeAreaProvider>
+      <RootLayoutNav />
+    </SafeAreaProvider>
   );
 }

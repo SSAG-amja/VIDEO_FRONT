@@ -1,5 +1,5 @@
 import { useState, useRef, useMemo, useEffect, useCallback } from 'react';
-import { View, Text, StyleSheet, Image, Pressable, Modal, TextInput, Alert, FlatList } from 'react-native';
+import { View, Text, StyleSheet, Image, Pressable, Modal, TextInput, FlatList } from 'react-native';
 import { router, useFocusEffect } from 'expo-router';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
@@ -22,6 +22,7 @@ import {
 } from '../../api/playlists';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/KeyboardAccessory';
 
+import { AppAlert } from '../../store/useAlertStore';
 const MAIN_TABS = ['Pinned', 'Watched', 'Saved'];
 const INDEX_LETTERS = ['ㄱ','ㄴ','ㄷ','ㄹ','ㅁ','ㅂ','ㅅ','ㅇ','ㅈ','ㅊ','ㅋ','ㅌ','ㅍ','ㅎ','A','F','K','P','U','Z'];
 
@@ -152,8 +153,8 @@ export default function LibraryScreen() {
           timeA = a.watchedAt ? new Date(a.watchedAt).getTime() : 0;
           timeB = b.watchedAt ? new Date(b.watchedAt).getTime() : 0;
         } else {
-          timeA = Number(a.id) || 0; 
-          timeB = Number(b.id) || 0;
+          timeA = a.pinnedAt ? new Date(a.pinnedAt).getTime() : 0;
+          timeB = b.pinnedAt ? new Date(b.pinnedAt).getTime() : 0;
         }
 
         return sortOrder === 'asc' ? timeA - timeB : timeB - timeA;
@@ -200,14 +201,14 @@ export default function LibraryScreen() {
       setModalVisible(false);
     } catch (error) {
       console.error('Create Playlist API Error:', error);
-      Alert.alert('생성 실패', '플레이리스트를 생성하지 못했습니다.');
+      AppAlert.alert('생성 실패', '플레이리스트를 생성하지 못했습니다.');
     }
   };
 
   // 2026.05.13 박현식
   // 플레이리스트 폴더 하나를 삭제 확인 후 백엔드와 전역 상태에서 제거한다.
   const handleDeletePlaylist = (id: string, name: string) => {
-    Alert.alert("재생목록 삭제", `'${name}' 재생목록을 삭제하시겠습니까?`, [
+    AppAlert.alert("재생목록 삭제", `'${name}' 재생목록을 삭제하시겠습니까?`, [
       { text: "취소", style: "cancel" },
       {
         text: "삭제",
@@ -217,7 +218,7 @@ export default function LibraryScreen() {
             await deletePlaylistApi(id);
           } catch (error) {
             console.error('Delete Playlist API Error:', error);
-            Alert.alert('삭제 실패', '플레이리스트를 삭제하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '플레이리스트를 삭제하지 못했습니다.');
           }
         },
         style: "destructive"
@@ -235,7 +236,7 @@ export default function LibraryScreen() {
     } catch (error) {
       console.error('Update Playlist API Error:', error);
       togglePlaylistVisibility(id);
-      Alert.alert('수정 실패', '플레이리스트 공개 설정을 변경하지 못했습니다.');
+      AppAlert.alert('수정 실패', '플레이리스트 공개 설정을 변경하지 못했습니다.');
     }
   };
 
@@ -244,7 +245,7 @@ export default function LibraryScreen() {
   const handleClearPlaylists = () => {
     if (customPlaylists.length === 0) return;
 
-    Alert.alert('플레이리스트 전체 삭제', '모든 플레이리스트를 삭제하시겠습니까?', [
+    AppAlert.alert('플레이리스트 전체 삭제', '모든 플레이리스트를 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -257,7 +258,7 @@ export default function LibraryScreen() {
           } catch (error) {
             console.error('Clear Playlists API Error:', error);
             setPlaylists(previousPlaylists);
-            Alert.alert('삭제 실패', '플레이리스트를 전체 삭제하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '플레이리스트를 전체 삭제하지 못했습니다.');
           }
         },
       },
@@ -274,7 +275,7 @@ export default function LibraryScreen() {
       pinMovieApi(item.id).catch((error) => {
         console.error('Pin API Error:', error);
         unpinMovie(item.id);
-        Alert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
+        AppAlert.alert('저장 실패', '핀 보관함에 저장하지 못했습니다.');
       });
       return;
     }
@@ -284,7 +285,7 @@ export default function LibraryScreen() {
     deletePinnedMovieApi(item.id).catch((error) => {
       console.error('Unpin API Error:', error);
       pinMovie(item);
-      Alert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
+      AppAlert.alert('삭제 실패', '핀 보관함에서 삭제하지 못했습니다.');
     });
   };
 
@@ -293,7 +294,7 @@ export default function LibraryScreen() {
   const handleClearPinned = () => {
     if (pinnedMovies.length === 0) return;
 
-    Alert.alert('핀 초기화', '핀 보관함의 모든 영화를 삭제하시겠습니까?', [
+    AppAlert.alert('핀 초기화', '핀 보관함의 모든 영화를 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '초기화',
@@ -305,7 +306,7 @@ export default function LibraryScreen() {
             setDisplayPinned([]);
           } catch (error) {
             console.error('Clear Pinned API Error:', error);
-            Alert.alert('초기화 실패', '핀 보관함을 초기화하지 못했습니다.');
+            AppAlert.alert('초기화 실패', '핀 보관함을 초기화하지 못했습니다.');
           }
         },
       },
@@ -319,7 +320,7 @@ export default function LibraryScreen() {
 
     deleteWatchedMovieApi(item.id).catch((error) => {
       console.error('Delete Watched API Error:', error);
-      Alert.alert('삭제 실패', '본 영화 목록에서 삭제하지 못했습니다.');
+      AppAlert.alert('삭제 실패', '본 영화 목록에서 삭제하지 못했습니다.');
       setWatchedMovies((prev) => (prev.some((movie: any) => movie.id === item.id) ? prev : [item, ...prev]));
     });
   };
@@ -329,7 +330,7 @@ export default function LibraryScreen() {
   const handleClearWatched = () => {
     if (watchedMovies.length === 0) return;
 
-    Alert.alert('시청 기록 삭제', '본 영화 목록의 모든 영화를 삭제하시겠습니까?', [
+    AppAlert.alert('시청 기록 삭제', '본 영화 목록의 모든 영화를 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -342,7 +343,7 @@ export default function LibraryScreen() {
           } catch (error) {
             console.error('Clear Watched API Error:', error);
             setWatchedMovies(previousWatched);
-            Alert.alert('삭제 실패', '본 영화 목록을 초기화하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '본 영화 목록을 초기화하지 못했습니다.');
           }
         },
       },
@@ -389,28 +390,44 @@ export default function LibraryScreen() {
     </Pressable>
   );
 
-  const renderSavedItem = ({ item }: { item: any }) => (
-    <Pressable 
-      style={styles.playlistFolderCard} 
-      onPress={() => router.push({ pathname: '/playlist/[id]', params: { id: item.id.toString() } } as any)}
-    >
-      <View style={styles.folderIconContainer}>
-        <Ionicons name="folder" size={32} color="#FF5A36" />
-      </View>
-      <View style={styles.movieInfo}>
-        <Text style={styles.movieTitle}>{item.name}</Text>
-        <Text style={styles.movieTime}>영화 {item.movieCount ?? item.movies.length}편</Text>
-      </View>
-      <View style={styles.playlistActions}>
-        <Pressable style={styles.iconButton} onPress={() => handleTogglePlaylistVisibility(item.id, item.isPublic)}>
-          <Ionicons name={item.isPublic ? "lock-open" : "lock-closed"} size={22} color={item.isPublic ? "#FF5A36" : "#aaa"} />
-        </Pressable>
-        <Pressable style={styles.iconButton} onPress={() => handleDeletePlaylist(item.id, item.name)}>
-          <Ionicons name="trash-outline" size={22} color="#ff4444" />
-        </Pressable>
-      </View>
-    </Pressable>
-  );
+  const renderSavedItem = ({ item }: { item: any }) => {
+    const previewMovies = (item.movies ?? []).slice(0, 3);
+
+    return (
+      <Pressable 
+        style={styles.playlistFolderCard} 
+        onPress={() => router.push({ pathname: '/playlist/[id]', params: { id: item.id.toString() } } as any)}
+      >
+        {previewMovies.length > 0 ? (
+          <View style={styles.miniPosterRow}>
+            {previewMovies.map((movie: any) => (
+              <Image
+                key={String(movie.id)}
+                source={{ uri: movie.image || movie.poster || 'https://via.placeholder.com/160x240?text=No+Image' }}
+                style={styles.miniPoster}
+              />
+            ))}
+          </View>
+        ) : (
+          <View style={styles.folderIconContainer}>
+            <Ionicons name="folder" size={32} color="#FF5A36" />
+          </View>
+        )}
+        <View style={styles.movieInfo}>
+          <Text style={styles.movieTitle}>{item.name}</Text>
+          <Text style={styles.movieTime}>영화 {item.movieCount ?? item.movies.length}편</Text>
+        </View>
+        <View style={styles.playlistActions}>
+          <Pressable style={styles.iconButton} onPress={() => handleTogglePlaylistVisibility(item.id, item.isPublic)}>
+            <Ionicons name={item.isPublic ? "lock-open" : "lock-closed"} size={22} color={item.isPublic ? "#FF5A36" : "#aaa"} />
+          </Pressable>
+          <Pressable style={styles.iconButton} onPress={() => handleDeletePlaylist(item.id, item.name)}>
+            <Ionicons name="trash-outline" size={22} color="#ff4444" />
+          </Pressable>
+        </View>
+      </Pressable>
+    );
+  };
 
   return (
     <View style={styles.container}>
@@ -623,6 +640,8 @@ const styles = StyleSheet.create({
   emptyText: { color: '#666', fontSize: 16 },
   
   folderIconContainer: { width: 50, height: 50, borderRadius: 12, backgroundColor: 'rgba(255, 90, 54, 0.1)', justifyContent: 'center', alignItems: 'center' },
+  miniPosterRow: { flexDirection: 'row', alignItems: 'center', paddingRight: 13 },
+  miniPoster: { width: 38, height: 56, borderRadius: 7, marginRight: -13, backgroundColor: '#222', borderWidth: 1, borderColor: '#101010' },
   playlistActions: { flexDirection: 'row', alignItems: 'center', gap: 5 },
   iconButton: { padding: 8 },
 

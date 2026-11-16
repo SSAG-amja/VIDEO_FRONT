@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   ActivityIndicator,
-  Alert,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -15,6 +14,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from './KeyboardAccessory';
 
+import { AppAlert } from '../store/useAlertStore';
 // 2026.08.22 임재준: 커뮤니티(게시글/댓글) 공통 신고 사유
 const COMMUNITY_REPORT_REASONS = [
   '스포일러 미표기',
@@ -77,7 +77,7 @@ export default function ReportModal({ visible, targetType, onClose, onSubmit }: 
 
   const handleSubmit = async () => {
     if (selectedReason === '기타 (직접 입력)' && !details.trim()) {
-      Alert.alert('확인', '신고 상세 내용을 입력해주세요.');
+      AppAlert.alert('확인', '신고 상세 내용을 입력해주세요.');
       return;
     }
 
@@ -85,10 +85,10 @@ export default function ReportModal({ visible, targetType, onClose, onSubmit }: 
       setIsSubmitting(true);
       await onSubmit(selectedReason, details.trim() || undefined);
       resetAndClose();
-      Alert.alert('접수 완료', '신고가 정상적으로 접수되었습니다.');
+      AppAlert.alert('접수 완료', '신고가 정상적으로 접수되었습니다.');
     } catch (error: any) {
       const msg = error?.response?.status === 409 ? '이미 신고한 내역입니다.' : '신고를 접수하지 못했습니다.';
-      Alert.alert('알림', msg);
+      AppAlert.alert('알림', msg);
     } finally {
       setIsSubmitting(false);
     }

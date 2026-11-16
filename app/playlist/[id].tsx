@@ -1,13 +1,24 @@
 // app/playlist/[id].tsx
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { 
-  View, Text, StyleSheet, Image, Pressable, Alert, Modal, TextInput, 
-  ActivityIndicator, FlatList, KeyboardAvoidingView, Platform, ScrollView
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  Pressable,
+  Modal,
+  TextInput,
+  ActivityIndicator,
+  FlatList,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
 } from 'react-native';
 import { useLocalSearchParams, router, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { usePlaylistStore } from '../../store/usePlaylistStore';
-import { fetchSearchData } from '../../api/explore';
+import { fetchSearchData, SEARCH_PAGE_SIZE } from '../../api/explore';
 import {
   addPlaylistMovieApi,
   clearPlaylistMoviesApi,
@@ -21,7 +32,9 @@ import KeyboardAccessory, { KEYBOARD_ACCESSORY_ID } from '../../components/Keybo
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import DraggableFlatList, { ScaleDecorator, RenderItemParams } from 'react-native-draggable-flatlist';
 
+import { AppAlert } from '../../store/useAlertStore';
 export default function PlaylistDetailScreen() {
+  const insets = useSafeAreaInsets();
   const { id, sharedPlaylist } = useLocalSearchParams<{ id: string; sharedPlaylist?: string }>();
   
   const { 
@@ -67,6 +80,8 @@ export default function PlaylistDetailScreen() {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<any[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const searchRequestIdRef = useRef(0);
+  const searchAbortRef = useRef<AbortController | null>(null);
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedMovieIds, setSelectedMovieIds] = useState<string[]>([]);
@@ -78,23 +93,49 @@ export default function PlaylistDetailScreen() {
   const [toastMessage, setToastMessage] = useState('');
 
   useEffect(() => {
-    if (searchQuery.trim() === '') {
+    const trimmedQuery = searchQuery.trim();
+    searchAbortRef.current?.abort();
+
+    if (trimmedQuery === '') {
+      searchRequestIdRef.current += 1;
       setSearchResults([]);
+      setIsSearching(false);
       return;
     }
+
+    const requestId = searchRequestIdRef.current + 1;
+    searchRequestIdRef.current = requestId;
     setIsSearching(true);
+
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
+
     const delayDebounceFn = setTimeout(async () => {
       try {
-        const results = await fetchSearchData(searchQuery);
+        const results = await fetchSearchData(
+          trimmedQuery,
+          'latest',
+          1,
+          SEARCH_PAGE_SIZE,
+          { titleOnly: true, signal: controller.signal }
+        );
+        if (controller.signal.aborted || requestId !== searchRequestIdRef.current) return;
         setSearchResults(results);
       } catch (error) {
-        console.error("검색 중 오류 발생:", error);
+        if (!controller.signal.aborted) {
+          console.error("검색 중 오류 발생:", error);
+        }
       } finally {
-        setIsSearching(false);
+        if (!controller.signal.aborted && requestId === searchRequestIdRef.current) {
+          setIsSearching(false);
+        }
       }
-    }, 300);
+    }, 220);
 
-    return () => clearTimeout(delayDebounceFn);
+    return () => {
+      clearTimeout(delayDebounceFn);
+      controller.abort();
+    };
   }, [searchQuery]);
 
   useFocusEffect(
@@ -139,7 +180,7 @@ export default function PlaylistDetailScreen() {
   // 2026.05.13 박현식
   // 현재 플레이리스트 폴더를 삭제하고 상세 화면에서 빠져나간다.
   const handleDeletePlaylist = () => {
-    Alert.alert(
+    AppAlert.alert(
       "재생목록 삭제",
       `'${playlist.name}' 재생목록을 삭제하시겠습니까?`,
       [{
@@ -154,7 +195,7 @@ export default function PlaylistDetailScreen() {
             await deletePlaylistApi(playlist.id);
           } catch (error) {
             console.error('Delete Playlist API Error:', error);
-            Alert.alert('삭제 실패', '플레이리스트를 삭제하지 못했습니다.');
+            AppAlert.alert('삭제 실패', '플레이리스트를 삭제하지 못했습니다.');
           }
         },
         style: "destructive"
@@ -172,7 +213,7 @@ export default function PlaylistDetailScreen() {
     } catch (error) {
       console.error('Update Playlist API Error:', error);
       togglePlaylistVisibility(playlist.id);
-      Alert.alert('수정 실패', '플레이리스트 공개 설정을 변경하지 못했습니다.');
+      AppAlert.alert('수정 실패', '플레이리스트 공개 설정을 변경하지 못했습니다.');
     }
   };
 
@@ -180,7 +221,7 @@ export default function PlaylistDetailScreen() {
   // 플레이리스트에서 영화 하나를 삭제하고 백엔드 목록 API와 동기화한다.
   const handleRemoveMovie = (movieId: string, movieTitle: string) => {
     if (isSharedPreview) return;
-    Alert.alert(
+    AppAlert.alert(
       "영화 삭제",
       `'${movieTitle}' 영화를 목록에서 지우시겠습니까?`,
       [{
@@ -195,7 +236,7 @@ export default function PlaylistDetailScreen() {
           } catch (error: any) {
             if (error?.response?.status !== 404) {
               console.error('Delete Playlist Movie API Error:', error);
-              Alert.alert('삭제 실패', '플레이리스트에서 영화를 삭제하지 못했습니다.');
+              AppAlert.alert('삭제 실패', '플레이리스트에서 영화를 삭제하지 못했습니다.');
             }
           }
         },
@@ -242,7 +283,7 @@ export default function PlaylistDetailScreen() {
 
     const selectedCount = selectedMovieIds.length;
     const previousMovies = playlist.movies;
-    Alert.alert('선택 영화 삭제', `선택한 영화 ${selectedCount}편을 목록에서 지우시겠습니까?`, [
+    AppAlert.alert('선택 영화 삭제', `선택한 영화 ${selectedCount}편을 목록에서 지우시겠습니까?`, [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -258,7 +299,7 @@ export default function PlaylistDetailScreen() {
             if (error?.response?.status !== 404) {
               console.error('Delete Selected Playlist Movies API Error:', error);
               setPlaylistMovies(playlist.id, previousMovies);
-              Alert.alert('삭제 실패', '선택한 영화를 삭제하지 못했습니다.');
+              AppAlert.alert('삭제 실패', '선택한 영화를 삭제하지 못했습니다.');
             }
           }
         },
@@ -278,10 +319,10 @@ export default function PlaylistDetailScreen() {
     } catch (error: any) {
       if (error?.response?.status !== 404) {
         console.error('Add Playlist Movie API Error:', error);
-        Alert.alert('저장 실패', '플레이리스트에 영화를 저장하지 못했습니다.');
+        AppAlert.alert('저장 실패', '플레이리스트에 영화를 저장하지 못했습니다.');
       }
     }
-    Alert.alert("추가 완료", `'${movieToAdd.title}' 영화가 추가되었습니다.`);
+    AppAlert.alert("추가 완료", `'${movieToAdd.title}' 영화가 추가되었습니다.`);
     setActiveMenuId(null); 
   };
 
@@ -291,7 +332,7 @@ export default function PlaylistDetailScreen() {
     if (isSharedPreview) return;
     if (playlist.movies.length === 0) return;
 
-    Alert.alert('목록 비우기', '이 플레이리스트의 모든 영화를 삭제하시겠습니까?', [
+    AppAlert.alert('목록 비우기', '이 플레이리스트의 모든 영화를 삭제하시겠습니까?', [
       { text: '취소', style: 'cancel' },
       {
         text: '삭제',
@@ -305,7 +346,7 @@ export default function PlaylistDetailScreen() {
             if (error?.response?.status !== 404) {
               console.error('Clear Playlist Movies API Error:', error);
               setPlaylistMovies(playlist.id, previousMovies);
-              Alert.alert('삭제 실패', '플레이리스트를 비우지 못했습니다.');
+              AppAlert.alert('삭제 실패', '플레이리스트를 비우지 못했습니다.');
             }
           }
         },
@@ -335,7 +376,7 @@ export default function PlaylistDetailScreen() {
   const handleWritePostPress = () => {
     if (isSharedPreview) return;
     if (!playlist.isPublic) {
-      Alert.alert(
+      AppAlert.alert(
         "비공개 재생목록",
         "커뮤니티에 글을 작성하려면 공유 플레이리스트(공개)로 설정해야 합니다.\n자물쇠 버튼을 눌러 공개로 변경해주세요."
       );
@@ -438,7 +479,7 @@ export default function PlaylistDetailScreen() {
   };
 
   // 2026.05.18 박현식
-  // 소유한 플레이리스트에서만 영화 추가와 목록 비우기 액션을 렌더링한다.
+  // 소유한 플레이리스트에서만 영화 추가 액션을 상단에 렌더링한다.
   const renderHeaderComponent = () => (
     <View>
       {!isSharedPreview && (
@@ -449,15 +490,18 @@ export default function PlaylistDetailScreen() {
           <Text style={styles.addMovieText}>영화 검색하여 추가하기</Text>
         </Pressable>
       )}
-
-      {!isSharedPreview && playlist.movies.length > 0 && (
-        <Pressable style={styles.clearMoviesButton} onPress={handleClearPlaylistMovies}>
-          <Ionicons name="trash-outline" size={18} color="#ff6b5a" />
-          <Text style={styles.clearMoviesText}>목록 비우기</Text>
-        </Pressable>
-      )}
     </View>
   );
+
+  const renderFooterComponent = () => {
+    if (isSharedPreview || playlist.movies.length === 0) return null;
+    return (
+      <Pressable style={styles.clearMoviesButton} onPress={handleClearPlaylistMovies}>
+        <Ionicons name="trash-outline" size={18} color="#ff6b5a" />
+        <Text style={styles.clearMoviesText}>목록 비우기</Text>
+      </Pressable>
+    );
+  };
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
@@ -514,6 +558,7 @@ export default function PlaylistDetailScreen() {
           keyExtractor={(item) => item.id.toString()}
           renderItem={renderMovieItem}
           ListHeaderComponent={renderHeaderComponent}
+          ListFooterComponent={renderFooterComponent}
           ListEmptyComponent={
             <View style={styles.emptyContainer}>
               <Text style={styles.emptyText}>이 재생목록에 저장된 영화가 없습니다.</Text>
